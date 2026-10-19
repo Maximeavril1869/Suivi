@@ -66,6 +66,11 @@ nav button.on{color:var(--pri);font-weight:700}
 .btns>*{flex:1}
 table{width:100%;border-collapse:collapse;font-size:13px}
 td,th{padding:4px;border-bottom:1px solid var(--line);text-align:left}
+.chips{display:flex;gap:8px;overflow-x:auto;margin:0 0 12px;padding-bottom:2px}
+.chip{flex:none;border:1px solid var(--line);background:var(--card);color:var(--mut);border-radius:12px;padding:8px 12px;text-align:left}
+.chip.on{border-color:var(--pri);color:var(--tx);box-shadow:inset 0 0 0 1px var(--pri)}
+.chip b{display:block;font-size:14px}
+.chip span{font-size:12px}
 </style>
 </head>
 <body>
@@ -91,8 +96,18 @@ const CATS={
  'Divers':['Cadeaux','Imprévus','Non classé']
 };
 const RK='Loisirs|Restaurants / bars';
-const defaultState=()=>({v:1,opening:0,tx:[],rec:[],rules:[],budgets:{},csvMaps:{},skips:[],lastExport:null});
-function load(){try{const r=localStorage.getItem(KEY);if(r)return Object.assign(defaultState(),JSON.parse(r));}catch(e){}return defaultState();}
+const defaultState=()=>({v:2,accounts:[{id:'a1',name:'Compte salaire',type:'courant',opening:0,cash:true}],shown:['a1'],tx:[],rec:[],rules:[],budgets:{},csvMaps:{},skips:[],lastExport:null});
+function migrate(raw){
+ const o=Object.assign(defaultState(),raw||{});
+ if(!raw||!Array.isArray(raw.accounts)||!raw.accounts.length){o.accounts=[{id:'a1',name:'Compte salaire',type:'courant',opening:(raw&&raw.opening)||0,cash:true}];o.shown=['a1'];}
+ const first=o.accounts[0].id;
+ o.tx.forEach(t=>{if(!t.acc)t.acc=first;});
+ o.rec.forEach(r=>{if(!r.acc)r.acc=first;});
+ if(!Array.isArray(o.shown))o.shown=o.accounts.map(a=>a.id);
+ o.shown=o.shown.filter(id=>o.accounts.some(a=>a.id===id));
+ delete o.opening;o.v=2;return o;
+}
+function load(){try{const r=localStorage.getItem(KEY);if(r)return migrate(JSON.parse(r));}catch(e){}return migrate(null);}
 let S=load();
 function save(){try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){alert("Impossible d'enregistrer : stockage plein ou bloqué.");}}
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
@@ -110,8 +125,31 @@ const frDate=d=>d.slice(8)+'/'+d.slice(5,7)+'/'+d.slice(0,4);
 
 /* ---------- logique ---------- */
 function sortedTx(){return S.tx.map((t,i)=>[t,i]).sort((a,b)=>a[0].date<b[0].date?-1:a[0].date>b[0].date?1:a[1]-b[1]).map(x=>x[0]);}
-function withBalance(){let b=S.opening;return sortedTx().map(t=>{b+=t.amount;return Object.assign({},t,{bal:b});});}
-function balanceAt(date){return S.opening+S.tx.filter(t=>t.date<=date).reduce((a,t)=>a+t.amount,0);}
+const ACC_TYPES={courant:'Compte courant',paypal:'PayPal',livret:'Livret',emprunt:'Emprunt'};
+const accById=id=>S.accounts.find(a=>a.id===id);
+const accName=id=>{const a=accById(id);return a?a.name:'?';};
+const inScope=t=>S.shown.includes(t.acc);
+function defAcc(){return S.shown[0]||S.accounts[0].id;}
+function scopeAccs(cashOnly){return S.accounts.filter(a=>S.shown.includes(a.id)&&(!cashOnly||a.cash));}
+function openingSum(cashOnly){return scopeAccs(cashOnly).reduce((s,a)=>s+(a.opening||0),0);}
+function balanceAt(date,cashOnly){const ids=new Set(scopeAccs(cashOnly).map(a=>a.id));return openingSum(cashOnly)+S.tx.filter(t=>ids.has(t.acc)&&t.date<=date).reduce((s,t)=>s+t.amount,0);}
+function accBalance(id,date){const a=accById(id);return ((a&&a.opening)||0)+S.tx.filter(t=>t.acc===id&&(!date||t.date<=date)).reduce((s,t)=>s+t.amount,0);}
+function withBalance(){let b=openingSum(false);return sortedTx().filter(inScope).map(t=>{b+=t.amount;return Object.assign({},t,{bal:b});});}
+function xferOther(t){return t.xfer?S.tx.find(x=>x.xfer===t.xfer&&x.id!==t.id):null;}
+function createTransfer(from,to,amt,date,label){
+ const pid=uid();
+ S.tx.push({id:uid(),date,label,amount:-amt,cat:'Virement',sub:'Entre comptes',payee:'',acc:from,xfer:pid},{id:uid(),date,label,amount:amt,cat:'Virement',sub:'Entre comptes',payee:'',acc:to,xfer:pid});
+ return pid;
+}
+function linkTransfer(t,otherAcc){
+ const pid=uid();
+ const cand=S.tx.find(x=>x.acc===otherAcc&&!x.xfer&&x.id!==t.id&&Math.abs(x.amount+t.amount)<0.005&&Math.abs((new Date(x.date+'T12:00:00')-new Date(t.date+'T12:00:00'))/86400000)<=5);
+ t.xfer=pid;t.cat='Virement';t.sub='Entre comptes';
+ if(cand){cand.xfer=pid;cand.cat='Virement';cand.sub='Entre comptes';return 'lié';}
+ S.tx.push({id:uid(),date:t.date,label:t.label,amount:-t.amount,cat:'Virement',sub:'Entre comptes',payee:'',acc:otherAcc,xfer:pid});
+ return 'créé';
+}
+function unlinkTransfer(pid){S.tx.filter(x=>x.xfer===pid).forEach(x=>{const c=autoCat(x.label,x.amount);x.cat=c.cat;x.sub=c.sub;if(!x.payee)x.payee=c.payee||'';delete x.xfer;});}
 
 function occ(r,m){
  const [y,mm]=m.split('-').map(Number);const out=[];const last=dim(y,mm);
@@ -135,7 +173,7 @@ function amountAt(r,d){
 function dueItems(m){
  const have=new Set(S.tx.filter(t=>t.recKey).map(t=>t.recKey).concat(S.skips));
  const out=[];
- S.rec.forEach(r=>occ(r,m).forEach(d=>{const k=r.id+'|'+d;if(!have.has(k))out.push({r,d,k,amount:amountAt(r,d)});}));
+ S.rec.filter(r=>S.shown.includes(r.acc)).forEach(r=>occ(r,m).forEach(d=>{const k=r.id+'|'+d;if(!have.has(k))out.push({r,d,k,amount:amountAt(r,d)});}));
  return out.sort((a,b)=>a.d<b.d?-1:a.d>b.d?1:0);
 }
 function autoCat(label,amount){
@@ -152,6 +190,7 @@ function linkRec(tx){
  const n=norm(tx.label);
  const have=new Set(S.tx.filter(t=>t.recKey).map(t=>t.recKey));
  for(const r of S.rec){
+  if(r.acc&&tx.acc&&r.acc!==tx.acc)continue;
   const kw=norm(r.match||r.label);
   if(!kw||!n.includes(kw))continue;
   const base=monthOf(tx.date);
@@ -167,7 +206,7 @@ function linkRec(tx){
 function monthStats(m){
  const byCat={},byInc={};let inc=0,exp=0;
  S.tx.forEach(t=>{
-  if(monthOf(t.date)!==m)return;
+  if(monthOf(t.date)!==m||!inScope(t)||t.xfer)return;
   if(t.cat==='Revenus'){inc+=t.amount;byInc[t.sub]=(byInc[t.sub]||0)+t.amount;}
   else{exp-=t.amount;const c=byCat[t.cat]||(byCat[t.cat]={total:0,subs:{}});c.total-=t.amount;c.subs[t.sub]=(c.subs[t.sub]||0)-t.amount;}
  });
@@ -175,7 +214,7 @@ function monthStats(m){
 }
 function spentFor(m,key){
  const [c,s]=key.split('|');let v=0;
- S.tx.forEach(t=>{if(monthOf(t.date)===m&&t.cat===c&&t.cat!=='Revenus'&&(!s||t.sub===s))v-=t.amount;});
+ S.tx.forEach(t=>{if(monthOf(t.date)===m&&inScope(t)&&!t.xfer&&t.cat===c&&t.cat!=='Revenus'&&(!s||t.sub===s))v-=t.amount;});
  return v;
 }
 function parseCSV(text){
@@ -220,6 +259,14 @@ const $=id=>document.getElementById(id);
 const monthNav=()=>`<div class="mnav"><button data-a="prev">‹</button><b>${esc(monthLabel(month))}</b><button data-a="next">›</button></div>`;
 const catOptions=sel=>Object.keys(CATS).map(c=>`<option ${c===sel?'selected':''}>${esc(c)}</option>`).join('');
 const subOptions=(cat,sel)=>(CATS[cat]||[]).map(s=>`<option ${s===sel?'selected':''}>${esc(s)}</option>`).join('');
+function accBar(){
+ if(S.accounts.length<2)return '';
+ return `<div class="chips">`+S.accounts.map(a=>{const on=S.shown.includes(a.id);const b=accBalance(a.id,today());return `<button class="chip ${on?'on':''}" data-a="togacc" data-id="${esc(a.id)}"><b>${on?'☑':'☐'} ${esc(a.name)}</b><span class="${b<0?'neg':''}">${fmt(b)}</span></button>`;}).join('')+`</div>`;
+}
+function accSelect(id,sel){
+ if(S.accounts.length<2)return '';
+ return `<label>Compte<select id="${id}">${S.accounts.map(a=>`<option value="${esc(a.id)}" ${a.id===sel?'selected':''}>${esc(a.name)}</option>`).join('')}</select></label>`;
+}
 
 /* ---------- vues ---------- */
 function chartSVG(m){
@@ -237,20 +284,20 @@ function chartSVG(m){
 function homeHTML(){
  const now=today(),cur=monthOf(now);
  const st=monthStats(month);
- const balNow=balanceAt(now);
+ const balNow=balanceAt(now,false),rav=balanceAt(now,true);
  const due=dueItems(month);
  let h='';
  if(S.tx.length&&(!S.lastExport||(new Date(now)-new Date(S.lastExport))/86400000>30)){
   h+=`<div class="card warn"><b>Sauvegarde conseillée</b><div class="s">${S.lastExport?'Dernière sauvegarde : '+frDate(S.lastExport):'Aucune sauvegarde faite.'} Tes données ne sont que sur ce téléphone.</div><div style="margin-top:8px"><button class="primary small" data-a="export">Sauvegarder maintenant</button></div></div>`;
  }
  if(!S.tx.length){
-  h+=`<div class="card"><b>Pour démarrer</b><ol class="mut" style="margin:6px 0 0;padding-left:20px"><li>Réglages : indique ton solde actuel.</li><li>Import : charge le CSV de ta banque.</li><li>Récurrent : ajoute loyer, salaire, abonnements.</li></ol></div>`;
+  h+=`<div class="card"><b>Pour démarrer</b><ol class="mut" style="margin:6px 0 0;padding-left:20px"><li>Réglages : crée tes comptes et indique leur solde actuel.</li><li>Import : charge le CSV de ta banque.</li><li>Récurrent : ajoute loyer, salaire, abonnements.</li></ol></div>`;
  }
- h+=monthNav();
+ h+=accBar()+monthNav();
  let proj,projLabel;
  if(month===cur){proj=balNow+due.reduce((a,x)=>a+x.amount,0);projLabel='Solde prévu fin de mois';}
- else{proj=balanceAt(month+'-31');projLabel='Solde fin de mois';}
- h+=`<div class="grid"><div class="card"><div class="s">Solde actuel</div><div class="big ${balNow<0?'neg':''}">${fmt(balNow)}</div></div><div class="card"><div class="s">${projLabel}</div><div class="big ${proj<0?'neg':''}">${fmt(proj)}</div></div><div class="card"><div class="s">Recettes</div><div class="big pos">${fmt(st.inc)}</div></div><div class="card"><div class="s">Dépenses</div><div class="big neg">${fmt(st.exp)}</div></div></div>`;
+ else{proj=balanceAt(month+'-31',false);projLabel='Solde fin de mois';}
+ h+=`<div class="grid"><div class="card"><div class="s">${S.accounts.length>1?'Solde des comptes cochés':'Solde actuel'}</div><div class="big ${balNow<0?'neg':''}">${fmt(balNow)}</div></div>${Math.abs(rav-balNow)>0.004?`<div class="card"><div class="s">Reste à vivre</div><div class="big ${rav<0?'neg':''}">${fmt(rav)}</div></div>`:''}<div class="card"><div class="s">${projLabel}</div><div class="big ${proj<0?'neg':''}">${fmt(proj)}</div></div><div class="card"><div class="s">Recettes</div><div class="big pos">${fmt(st.inc)}</div></div><div class="card"><div class="s">Dépenses</div><div class="big neg">${fmt(st.exp)}</div></div></div>`;
  if(due.length)h+=`<div class="card warn" data-a="nav" data-v="rec"><b>${due.length} échéance(s) à valider ce mois</b><div class="s">Touche pour les voir</div></div>`;
  const resto=spentFor(month,RK);
  const prev=[1,2,3].map(i=>addMonths(month,-i)).filter(m=>S.tx.some(t=>monthOf(t.date)===m));
@@ -278,7 +325,9 @@ function homeHTML(){
 function payOpts(){return [...new Set(S.tx.map(t=>t.payee).filter(Boolean))].sort().map(p=>`<option value="${esc(p)}">`).join('');}
 function txRow(t){
  const chk=sel?`<input type="checkbox" ${sel.has(t.id)?'checked':''} tabindex="-1" style="width:22px;height:22px;margin:0;padding:0;flex:none;pointer-events:none">`:'';
- const sub2=(t.payee?esc(t.label)+' · ':'')+esc(t.cat)+' › '+esc(t.sub)+(t.recKey?' · récurrent':'');
+ const o=xferOther(t);
+ const base=t.xfer?(t.amount<0?'Virement vers ':'Virement depuis ')+(o?esc(accName(o.acc)):'?'):esc(t.cat)+' › '+esc(t.sub);
+ const sub2=(t.payee?esc(t.label)+' · ':'')+base+(t.recKey?' · récurrent':'')+(S.accounts.length>1?' · '+esc(accName(t.acc)):'');
  return `<div class="row" data-a="${sel?'togsel':'edittx'}" data-id="${esc(t.id)}">${chk}<div class="d">${t.date.slice(8)}/${t.date.slice(5,7)}</div><div class="m"><div class="l">${esc(t.payee||t.label)}</div><div class="s">${sub2}</div></div><div class="a"><div class="${t.amount<0?'neg':'pos'}">${fmt(t.amount)}</div><div class="s">${fmt(t.bal)}</div></div></div>`;
 }
 function filteredTx(){
@@ -292,7 +341,7 @@ function filteredTx(){
 }
 function pruneSel(){if(!sel)return;const vis=new Set(filteredTx().items.map(t=>t.id));sel=new Set([...sel].filter(id=>vis.has(id)));}
 function selCtl(){
- if(!sel)return `<button class="ghost small" data-a="selstart">Sélectionner plusieurs</button>`;
+ if(!sel)return `<button class="ghost small" data-a="selstart">Sélectionner plusieurs</button>`+(S.accounts.length>1?`<button class="ghost small" data-a="newxfer">Virement</button>`:'');
  return `<button class="ghost small" data-a="selall">Tout sélectionner</button><button class="primary small" data-a="bulk">Modifier (${sel.size})</button><button class="ghost small" data-a="selend">Terminer</button>`;
 }
 function listHTML(){
@@ -303,13 +352,13 @@ function listHTML(){
 }
 function refreshList(){const l=$('list');if(l)l.innerHTML=listHTML();const c=$('selctl');if(c)c.innerHTML=selCtl();}
 function linesHTML(){
- const cats=Object.keys(CATS).map(c=>`<option ${c===fcat?'selected':''}>${esc(c)}</option>`).join('');
- return `${monthNav()}<input id="s" type="search" placeholder="Rechercher (libellé, tiers, catégorie…)" value="${esc(search)}">
+ const cats=Object.keys(CATS).concat(['Virement']).map(c=>`<option ${c===fcat?'selected':''}>${esc(c)}</option>`).join('');
+ return `${accBar()}${monthNav()}<input id="s" type="search" placeholder="Rechercher (libellé, tiers, catégorie…)" value="${esc(search)}">
  <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px"><select id="fcat" style="margin:0"><option value="">Toutes catégories</option>${cats}</select><label style="display:flex;align-items:center;gap:6px;white-space:nowrap;margin:0;color:var(--tx)"><input type="checkbox" id="funcl" ${funcl?'checked':''} style="width:20px;height:20px;margin:0;padding:0">Non classées</label></div>
  <div class="btns" id="selctl" style="margin-bottom:10px">${selCtl()}</div>
  <div class="card" id="list">${listHTML()}</div>${sel?'':'<button class="fab" data-a="newtx" aria-label="Ajouter">+</button>'}`;
 }
-function applyBulkTo(ids,o){let n=0;S.tx.forEach(t=>{if(!ids.has(t.id))return;if(o.cat){t.cat=o.cat;t.sub=o.sub;}if(o.payee)t.payee=o.payee;if(o.lab)t.label=o.lab;if(o.date)t.date=o.date;n++;});return n;}
+function applyBulkTo(ids,o){let n=0;S.tx.forEach(t=>{if(!ids.has(t.id))return;if(o.cat&&!t.xfer){t.cat=o.cat;t.sub=o.sub;}if(o.payee)t.payee=o.payee;if(o.lab)t.label=o.lab;if(o.date)t.date=o.date;if(o.acc)t.acc=o.acc;n++;});return n;}
 function bulkRuleKw(q,ids,o){
  const kw=norm(q);
  if(!o.cat||kw.length<3||S.rules.some(r=>r.kw===kw))return '';
@@ -324,12 +373,13 @@ function openBulk(){
  <label>Sous-catégorie<select id="bk_sub"></select></label>
  <label>Libellé<input id="bk_lab" placeholder="inchangé si vide"></label>
  <label>Date<input id="bk_date" type="date"></label>
+ ${S.accounts.length>1?`<label>Compte<select id="bk_acc"><option value="">— inchangé —</option>${S.accounts.map(a=>`<option value="${esc(a.id)}">${esc(a.name)}</option>`).join('')}</select></label>`:''}
  <div class="btns"><button class="ghost" data-a="closem">Annuler</button><button class="primary" data-a="applybulk">Appliquer</button></div>
  <div style="margin-top:10px"><button class="danger" style="width:100%" data-a="delbulk">Supprimer ces ${sel.size} ligne(s)</button></div>`);
 }
 function applyBulk(){
- const o={payee:$('bk_pay').value.trim(),cat:$('bk_cat').value,sub:$('bk_sub').value,lab:$('bk_lab').value.trim(),date:$('bk_date').value};
- if(!o.payee&&!o.cat&&!o.lab&&!o.date){alert('Rien à modifier.');return;}
+ const o={payee:$('bk_pay').value.trim(),cat:$('bk_cat').value,sub:$('bk_sub').value,lab:$('bk_lab').value.trim(),date:$('bk_date').value,acc:$('bk_acc')?$('bk_acc').value:''};
+ if(!o.payee&&!o.cat&&!o.lab&&!o.date&&!o.acc){alert('Rien à modifier.');return;}
  const kw=bulkRuleKw(search,sel,o);
  applyBulkTo(sel,o);
  if(kw&&confirm('Appliquer aussi cette catégorie aux futurs imports dont le libellé contient « '+kw+' » ?')){
@@ -346,11 +396,11 @@ function freqText(r){
 }
 function recHTML(){
  const due=dueItems(month);
- let h=monthNav();
+ let h=accBar()+monthNav();
  h+=`<div class="card"><b>À valider ce mois</b>`;
  h+=due.length?due.map(x=>`<div class="row"><div class="d">${x.d.slice(8)}/${x.d.slice(5,7)}</div><div class="m"><div class="l">${esc(x.r.label)}</div><div class="s">${esc(x.r.cat)} › ${esc(x.r.sub)}</div></div><div class="a"><div class="${x.amount<0?'neg':'pos'}">${fmt(x.amount)}</div><div style="margin-top:4px"><button class="primary small" data-a="validate" data-k="${esc(x.k)}">Valider</button> <button class="ghost small" data-a="skip" data-k="${esc(x.k)}">Ignorer</button></div></div></div>`).join(''):'<p class="mut">Rien à valider.</p>';
  h+=`</div><div class="card"><b>Mes récurrences</b>`;
- h+=S.rec.length?S.rec.map(r=>`<div class="row" data-a="editrec" data-id="${esc(r.id)}"><div class="m"><div class="l">${esc(r.label)}</div><div class="s">${esc(freqText(r))} · ${esc(r.cat)} › ${esc(r.sub)}</div></div><div class="a ${amountAt(r,today())<0?'neg':'pos'}">${fmt(amountAt(r,today()))}</div></div>`).join(''):'<p class="mut">Aucune récurrence.</p>';
+ h+=S.rec.length?S.rec.map(r=>`<div class="row" data-a="editrec" data-id="${esc(r.id)}"><div class="m"><div class="l">${esc(r.label)}</div><div class="s">${esc(freqText(r))} · ${esc(r.cat)} › ${esc(r.sub)}${S.accounts.length>1?' · '+esc(accName(r.acc)):''}</div></div><div class="a ${amountAt(r,today())<0?'neg':'pos'}">${fmt(amountAt(r,today()))}</div></div>`).join(''):'<p class="mut">Aucune récurrence.</p>';
  h+=`</div><button class="primary" style="width:100%" data-a="newrec">Ajouter une récurrence</button>`;
  return h;
 }
@@ -374,7 +424,7 @@ function impHTML(){
  const opts=sel=>`<option value="-1">—</option>`+hd.map((h,i)=>`<option value="${i}" ${i===sel?'selected':''}>${esc(h||('Colonne '+(i+1)))}</option>`).join('');
  const res=impParse();
  const prev=res.ok.slice(0,5).map(r=>`<tr><td>${frDate(r.date)}</td><td>${esc(r.label.slice(0,28))}</td><td>${fmt(r.amount)}</td></tr>`).join('');
- return `<h2>Import CSV</h2><div class="card"><label>Date<select data-imp="date">${opts(m.date)}</select></label><label>Libellé<select data-imp="label">${opts(m.label)}</select></label>
+ return `<h2>Import CSV</h2><div class="card">${accSelect('imp_acc',imp.acc)}<label>Date<select data-imp="date">${opts(m.date)}</select></label><label>Libellé<select data-imp="label">${opts(m.label)}</select></label>
  <div class="seg"><label><input type="radio" name="mode" value="single" ${m.mode==='single'?'checked':''}>1 colonne montant</label><label><input type="radio" name="mode" value="split" ${m.mode==='split'?'checked':''}>Débit / Crédit</label></div>
  ${m.mode==='single'?`<label>Montant (négatif = dépense)<select data-imp="amount">${opts(m.amount)}</select></label>`:`<label>Débit<select data-imp="debit">${opts(m.debit)}</select></label><label>Crédit<select data-imp="credit">${opts(m.credit)}</select></label>`}
  </div><div class="card"><b>Aperçu</b> <span class="s">${res.ok.length} ligne(s) lisible(s), ${res.bad} ignorée(s)</span><table>${prev||'<tr><td>Rien de lisible : vérifie les colonnes.</td></tr>'}</table></div>
@@ -384,9 +434,9 @@ function setHTML(){
  const budOpts=Object.keys(CATS).filter(c=>c!=='Revenus').map(c=>`<option value="${esc(c)}">${esc(c)} (toute la catégorie)</option>`+CATS[c].map(s=>`<option value="${esc(c+'|'+s)}">${esc(c)} › ${esc(s)}</option>`).join('')).join('');
  const buds=Object.keys(S.budgets).map(k=>`<div class="row"><div class="m">${esc(k.replace('|',' › '))}</div><div>${fmt(S.budgets[k])}</div><button class="ghost small" data-a="delbudget" data-key="${esc(k)}">Retirer</button></div>`).join('')||'<p class="mut">Aucun budget.</p>';
  const rules=S.rules.map(r=>`<div class="row"><div class="m"><div class="l">${esc(r.kw)}</div><div class="s">${esc(r.cat)} › ${esc(r.sub)}${r.payee?' · '+esc(r.payee):''}</div></div><button class="ghost small" data-a="delrule" data-kw="${esc(r.kw)}">Retirer</button></div>`).join('')||'<p class="mut">Aucune règle. Elles se créent quand tu corriges une catégorie.</p>';
+ const accs=S.accounts.map(a=>`<div class="row" data-a="editacc" data-id="${esc(a.id)}"><div class="m"><div class="l">${esc(a.name)}</div><div class="s">${esc(ACC_TYPES[a.type]||a.type)}${a.cash?'':' · hors reste à vivre'}</div></div><div class="a ${accBalance(a.id)<0?'neg':''}">${fmt(accBalance(a.id))}</div></div>`).join('');
  return `<h2>Réglages</h2>
- <div class="card"><b>Solde</b><p class="s">Solde de départ actuel : ${fmt(S.opening)} · solde calculé aujourd'hui : ${fmt(balanceAt(today()))}</p>
- <label>Mon solde réel aujourd'hui (€)<input id="real" inputmode="decimal" placeholder="ex. 1234,56"></label><button class="primary" data-a="calibrate">Caler le solde</button></div>
+ <div class="card"><b>Comptes</b><p class="s" style="margin-top:2px">Touche un compte pour le modifier ou caler son solde sur celui de ta banque.</p>${accs}<div style="margin-top:10px"><button class="primary" data-a="newacc">Ajouter un compte</button></div></div>
  <div class="card"><b>Budgets mensuels</b>${buds}<div style="margin-top:10px"><label>Catégorie<select id="b_key">${budOpts}</select></label><label>Plafond par mois (€)<input id="b_amt" inputmode="decimal"></label><button class="primary" data-a="addbudget">Ajouter</button></div></div>
  <div class="card"><b>Règles de classement automatique</b>${rules}</div>
  <div class="card"><b>Sauvegarde</b><p class="s">${S.lastExport?'Dernière sauvegarde : '+frDate(S.lastExport):'Aucune sauvegarde faite.'} Stockage persistant : ${persisted===true?'oui':persisted===false?'non accordé':'inconnu'}.</p>
@@ -407,16 +457,24 @@ function openTx(id,pre,recKey){
  const d=t||pre||{date:today(),label:'',amount:-0.01,cat:'Divers',sub:'Non classé'};
  const dep=d.amount<=0;
  const abs=t||pre?String(Math.abs(d.amount)).replace('.',','):'';
- txCtx={id:t?t.id:null,recKey:t?t.recKey:recKey||null};
+ const isX=!!(t&&t.xfer);
+ const oth=isX?xferOther(t):null;
+ txCtx={id:t?t.id:null,recKey:t?t.recKey:recKey||null,xfer:isX?t.xfer:null};
+ const catPart=isX
+  ?`<p class="s">Virement ${dep?'vers':'depuis'} « ${oth?esc(accName(oth.acc)):'?'} ». Le montant et la date sont répercutés sur l'autre ligne.</p>`
+  :`<label>Catégorie<select id="f_cat" data-catsel="f_sub">${catOptions(d.cat)}</select></label>
+ <label>Sous-catégorie<select id="f_sub">${subOptions(d.cat,d.sub)}</select></label>`
+  +(S.accounts.length>1?`<label>Cette ligne est un virement avec (facultatif)<select id="f_xacc"><option value="">— pas un virement —</option>${S.accounts.map(a=>`<option value="${esc(a.id)}">${esc(a.name)}</option>`).join('')}</select></label>`:'');
  openModal(`<h3>${t?'Modifier la ligne':'Nouvelle ligne'}</h3>
  <div class="seg"><label><input type="radio" name="ty" value="dep" ${dep?'checked':''}>Dépense</label><label><input type="radio" name="ty" value="rec" ${dep?'':'checked'}>Recette</label></div>
  <label>Montant (€)<input id="f_amt" inputmode="decimal" value="${abs}"></label>
  <label>Date<input id="f_date" type="date" value="${esc(d.date)}"></label>
  <label>Libellé<input id="f_lab" value="${esc(d.label)}"></label>
  <label>Tiers (commerçant)<input id="f_pay" list="paylist" autocomplete="off" value="${esc(d.payee||'')}"><datalist id="paylist">${payOpts()}</datalist></label>
- <label>Catégorie<select id="f_cat" data-catsel="f_sub">${catOptions(d.cat)}</select></label>
- <label>Sous-catégorie<select id="f_sub">${subOptions(d.cat,d.sub)}</select></label>
+ ${accSelect('f_acc',(t&&t.acc)||(pre&&pre.acc)||defAcc())}
+ ${catPart}
  <div class="btns"><button class="ghost" data-a="closem">Annuler</button><button class="primary" data-a="savetx">Enregistrer</button></div>
+ ${isX?'<div style="margin-top:10px"><button class="ghost" style="width:100%" data-a="unlink">Ce n\'est pas un virement (délier)</button></div>':''}
  ${t?'<div style="margin-top:10px"><button class="danger" style="width:100%" data-a="deltx">Supprimer cette ligne</button></div>':''}`);
 }
 function saveTx(){
@@ -426,20 +484,78 @@ function saveTx(){
  const date=$('f_date').value;if(!date){alert('Date manquante.');return;}
  const label=$('f_lab').value.trim()||'Sans libellé';
  const payee=$('f_pay').value.trim();
- const cat=$('f_cat').value,sub=$('f_sub').value;
+ const prevTx=txCtx.id?S.tx.find(x=>x.id===txCtx.id):null;
+ const accId=$('f_acc')?$('f_acc').value:((prevTx&&prevTx.acc)||defAcc());
+ const isX=!!txCtx.xfer;
+ const xacc=(!isX&&$('f_xacc'))?$('f_xacc').value:'';
+ if(xacc&&xacc===accId){alert('Choisis un autre compte pour le virement.');return;}
+ const cat=isX?'Virement':$('f_cat').value,sub=isX?'Entre comptes':$('f_sub').value;
  const amount=Math.round((ty==='dep'?-a:a)*100)/100;
  const before=autoCat(label,amount);
- if(txCtx.id){Object.assign(S.tx.find(x=>x.id===txCtx.id),{date,label,amount,cat,sub,payee});}
- else{const t={id:uid(),date,label,amount,cat,sub,payee};if(txCtx.recKey)t.recKey=txCtx.recKey;S.tx.push(t);}
+ let tx;
+ if(prevTx){tx=prevTx;Object.assign(tx,{date,label,amount,cat,sub,payee,acc:accId});}
+ else{tx={id:uid(),date,label,amount,cat,sub,payee,acc:accId};if(txCtx.recKey)tx.recKey=txCtx.recKey;S.tx.push(tx);}
+ if(isX){const o=xferOther(tx);if(o){o.amount=-amount;o.date=date;}}
+ if(xacc)linkTransfer(tx,xacc);
  const kw=kwFrom(label);
- let ruleAdded=false;
- if(!txCtx.recKey&&kw&&sub!=='Non classé'&&(before.cat!==cat||before.sub!==sub||(payee&&payee!==before.payee))&&!S.rules.some(r=>r.kw===kw)){
+ if(!isX&&!xacc&&!txCtx.recKey&&kw&&sub!=='Non classé'&&(before.cat!==cat||before.sub!==sub||(payee&&payee!==before.payee))&&!S.rules.some(r=>r.kw===kw)){
   if(confirm('Classer automatiquement les lignes « '+kw+' » en '+cat+' › '+sub+' ?')){
-   S.rules.push({kw,cat,sub,payee});ruleAdded=true;
+   S.rules.push({kw,cat,sub,payee});
    S.tx.forEach(t=>{if(t.cat==='Divers'&&t.sub==='Non classé'&&norm(t.label).includes(kw)){t.cat=cat;t.sub=sub;if(payee&&!t.payee)t.payee=payee;}});
   }
  }
  save();closeModal();month=monthOf(date);render();
+}
+function openXfer(){
+ const accs=S.accounts;
+ const opts=sel=>accs.map(a=>`<option value="${esc(a.id)}" ${a.id===sel?'selected':''}>${esc(a.name)}</option>`).join('');
+ txCtx={};
+ openModal(`<h3>Nouveau virement</h3>
+ <label>Depuis<select id="x_from">${opts(accs[0].id)}</select></label>
+ <label>Vers<select id="x_to">${opts((accs[1]||accs[0]).id)}</select></label>
+ <label>Montant (€)<input id="x_amt" inputmode="decimal"></label>
+ <label>Date<input id="x_date" type="date" value="${today()}"></label>
+ <label>Libellé<input id="x_lab" value="Virement"></label>
+ <div class="btns"><button class="ghost" data-a="closem">Annuler</button><button class="primary" data-a="savexfer">Enregistrer</button></div>`);
+}
+function saveXfer(){
+ const from=$('x_from').value,to=$('x_to').value,a=parseAmount($('x_amt').value),date=$('x_date').value;
+ if(from===to){alert('Choisis deux comptes différents.');return;}
+ if(!(a>0)){alert('Montant invalide.');return;}
+ if(!date){alert('Date manquante.');return;}
+ createTransfer(from,to,Math.round(a*100)/100,date,$('x_lab').value.trim()||'Virement');
+ save();closeModal();month=monthOf(date);render();
+}
+function openAcc(id){
+ const a=id?accById(id):null;
+ const d=a||{name:'',type:'courant',cash:true};
+ txCtx={aid:a?a.id:null};
+ openModal(`<h3>${a?'Modifier le compte':'Nouveau compte'}</h3>
+ <label>Nom<input id="ac_name" value="${esc(d.name)}" placeholder="ex. Banque 2, PayPal, Livret A"></label>
+ <label>Type<select id="ac_type">${Object.keys(ACC_TYPES).map(k=>`<option value="${k}" ${k===d.type?'selected':''}>${ACC_TYPES[k]}</option>`).join('')}</select></label>
+ <label style="display:flex;align-items:center;gap:10px;color:var(--tx)"><input type="checkbox" id="ac_cash" ${d.cash?'checked':''} style="width:22px;height:22px;margin:0;padding:0">Compter dans le reste à vivre</label>
+ <label>${a?'Mon solde réel aujourd\'hui (€) — vide = ne pas changer':'Solde actuel (€)'}<input id="ac_bal" inputmode="decimal" placeholder="ex. 1234,56"></label>
+ <div class="btns"><button class="ghost" data-a="closem">Annuler</button><button class="primary" data-a="saveacc">Enregistrer</button></div>
+ ${a?'<div style="margin-top:10px"><button class="danger" style="width:100%" data-a="delacc">Supprimer ce compte</button></div>':''}`);
+}
+function saveAcc(){
+ const name=$('ac_name').value.trim();if(!name){alert('Nom manquant.');return;}
+ const type=$('ac_type').value,cash=$('ac_cash').checked;
+ const balTxt=$('ac_bal').value.trim();let bal=NaN;
+ if(balTxt!==''){bal=parseAmount(balTxt);if(isNaN(bal)){alert('Solde invalide.');return;}}
+ let a=txCtx.aid?accById(txCtx.aid):null;
+ if(!a){a={id:uid(),name,type,cash,opening:0};S.accounts.push(a);S.shown.push(a.id);}
+ else{a.name=name;a.type=type;a.cash=cash;}
+ if(!isNaN(bal))a.opening=Math.round((bal-S.tx.filter(t=>t.acc===a.id&&t.date<=today()).reduce((s,t)=>s+t.amount,0))*100)/100;
+ save();closeModal();render();
+}
+function delAcc(){
+ const a=accById(txCtx.aid);if(!a)return;
+ if(S.accounts.length<2){alert('Il faut garder au moins un compte.');return;}
+ if(S.tx.some(t=>t.acc===a.id)||S.rec.some(r=>r.acc===a.id)){alert("Ce compte contient des lignes ou des récurrences : supprime-les ou déplace-les d'abord (sélection multiple, champ Compte).");return;}
+ if(!confirm('Supprimer le compte « '+a.name+' » ?'))return;
+ S.accounts=S.accounts.filter(x=>x.id!==a.id);S.shown=S.shown.filter(id=>id!==a.id);
+ save();closeModal();render();
 }
 function openRec(id){
  const r=id?S.rec.find(x=>x.id===id):null;
@@ -449,6 +565,7 @@ function openRec(id){
  txCtx={rid:r?r.id:null,cur:curAmt};
  openModal(`<h3>${r?'Modifier la récurrence':'Nouvelle récurrence'}</h3>
  <label>Libellé<input id="r_lab" value="${esc(d.label)}"></label>
+ ${accSelect('r_acc',d.acc||defAcc())}
  <div class="seg"><label><input type="radio" name="rty" value="dep" ${dep?'checked':''}>Dépense</label><label><input type="radio" name="rty" value="rec" ${dep?'':'checked'}>Recette</label></div>
  <label>Montant habituel (€) — modifiable à chaque validation<input id="r_amt" inputmode="decimal" value="${r?String(Math.abs(curAmt)).replace('.',','):''}"></label>
  ${r?`<div id="r_fromw" style="display:none"><label>Nouveau montant applicable à partir du<input id="r_from" type="date" value="${today()}"></label><p class="s" style="margin-top:-6px">Les échéances et les écritures liées à cette récurrence à partir de cette date prendront le nouveau montant.</p></div>`:''}
@@ -479,7 +596,7 @@ function saveRec(){
  const freq=$('r_freq').value;
  const newAmt=Math.round((ty==='dep'?-a:a)*100)/100;
  const old=txCtx.rid?S.rec.find(x=>x.id===txCtx.rid):null;
- const r={id:txCtx.rid||uid(),label,amount:newAmt,cat:$('r_cat').value,sub:$('r_sub').value,freq,day:parseInt($('r_day').value)||parseInt(start.slice(8)),every:Math.max(1,parseInt($('r_every').value)||1),start,end:$('r_end').value||'',match:$('r_match').value.trim()};
+ const r={id:txCtx.rid||uid(),label,amount:newAmt,acc:$('r_acc')?$('r_acc').value:(old?old.acc:defAcc()),cat:$('r_cat').value,sub:$('r_sub').value,freq,day:parseInt($('r_day').value)||parseInt(start.slice(8)),every:Math.max(1,parseInt($('r_every').value)||1),start,end:$('r_end').value||'',match:$('r_match').value.trim()};
  if(freq==='monthly'&&!$('r_day').value)r.day=parseInt(start.slice(8));
  if(old&&old.hist)r.hist=old.hist;
  if(old&&Math.abs(newAmt-txCtx.cur)>0.004){
@@ -508,16 +625,16 @@ async function exportJSON(){
 function doImport(){
  const {ok}=impParse();
  const have={};
- S.tx.forEach(t=>{const k=t.date+'|'+t.amount.toFixed(2)+'|'+norm(t.label);have[k]=(have[k]||0)+1;});
+ S.tx.forEach(t=>{if(t.acc!==imp.acc)return;const k=t.date+'|'+t.amount.toFixed(2)+'|'+norm(t.label);have[k]=(have[k]||0)+1;});
  let added=0,dup=0,last='';
  ok.forEach(r=>{
   const k=r.date+'|'+r.amount.toFixed(2)+'|'+norm(r.label);
   if(have[k]>0){have[k]--;dup++;return;}
   const c=autoCat(r.label,r.amount);
-  const tx={id:uid(),date:r.date,label:r.label,amount:r.amount,cat:c.cat,sub:c.sub,payee:c.payee||''};
+  const tx={id:uid(),date:r.date,label:r.label,amount:r.amount,cat:c.cat,sub:c.sub,payee:c.payee||'',acc:imp.acc};
   linkRec(tx);S.tx.push(tx);added++;if(r.date>last)last=r.date;
  });
- S.csvMaps[imp.sig]=imp.map;save();
+ S.csvMaps[imp.sig]=Object.assign({},imp.map,{acc:imp.acc});save();
  imp=null;
  if(last)month=monthOf(last);
  view='tx';render();
@@ -537,29 +654,37 @@ function onFile(text){
   const a=guessCol(header,/montant|amount|somme/i),db=guessCol(header,/d[ée]bit/i),cr=guessCol(header,/cr[ée]dit/i);
   map={date:d,label:l,amount:a,debit:db,credit:cr,mode:(a<0&&db>=0&&cr>=0)?'split':'single'};
  }
- imp={header,data,sig,map};render();
+ imp={header,data,sig,map,acc:(map.acc&&accById(map.acc))?map.acc:defAcc()};render();
 }
 function act(a,ds){
  if(a==='nav'){sel=null;view=ds.v;window.scrollTo(0,0);render();}
  else if(a==='prev'){month=addMonths(month,-1);pruneSel();render();}
  else if(a==='next'){month=addMonths(month,1);pruneSel();render();}
  else if(a==='newtx')openTx(null);
+ else if(a==='togacc'){const i=S.shown.indexOf(ds.id);if(i>=0)S.shown.splice(i,1);else S.shown.push(ds.id);save();pruneSel();render();}
+ else if(a==='newxfer')openXfer();
+ else if(a==='savexfer')saveXfer();
+ else if(a==='newacc')openAcc(null);
+ else if(a==='editacc')openAcc(ds.id);
+ else if(a==='saveacc')saveAcc();
+ else if(a==='delacc')delAcc();
+ else if(a==='unlink'){if(txCtx.xfer&&confirm('Délier ce virement ? Les deux lignes redeviennent des opérations normales, à catégoriser.')){unlinkTransfer(txCtx.xfer);save();closeModal();render();}}
  else if(a==='selstart'){sel=new Set();render();}
  else if(a==='selend'){sel=null;render();}
  else if(a==='togsel'){if(sel){if(sel.has(ds.id))sel.delete(ds.id);else sel.add(ds.id);refreshList();}}
  else if(a==='selall'){if(sel){const ids=filteredTx().items.map(t=>t.id);if(ids.length&&ids.every(id=>sel.has(id)))sel=new Set();else sel=new Set(ids);refreshList();}}
  else if(a==='bulk')openBulk();
  else if(a==='applybulk')applyBulk();
- else if(a==='delbulk'){if(sel&&confirm('Supprimer '+sel.size+' ligne(s) ? Action irréversible.')){S.tx=S.tx.filter(x=>!sel.has(x.id));sel=null;save();closeModal();render();}}
+ else if(a==='delbulk'){if(sel&&confirm('Supprimer '+sel.size+' ligne(s) ? Action irréversible.')){const px=new Set(S.tx.filter(x=>sel.has(x.id)&&x.xfer).map(x=>x.xfer));S.tx=S.tx.filter(x=>!sel.has(x.id)&&!(x.xfer&&px.has(x.xfer)));sel=null;save();closeModal();render();}}
  else if(a==='edittx')openTx(ds.id);
  else if(a==='newrec')openRec(null);
  else if(a==='editrec')openRec(ds.id);
  else if(a==='closem')closeModal();
  else if(a==='savetx')saveTx();
  else if(a==='saverec')saveRec();
- else if(a==='deltx'){if(confirm('Supprimer cette ligne ?')){S.tx=S.tx.filter(x=>x.id!==txCtx.id);save();closeModal();render();}}
+ else if(a==='deltx'){const t=S.tx.find(x=>x.id===txCtx.id);const isX=!!(t&&t.xfer);if(confirm(isX?'Supprimer ce virement ? Les deux lignes (les deux comptes) seront supprimées.':'Supprimer cette ligne ?')){S.tx=S.tx.filter(x=>isX?x.xfer!==t.xfer:x.id!==txCtx.id);save();closeModal();render();}}
  else if(a==='delrec'){if(confirm('Supprimer cette récurrence ? Les lignes déjà validées sont conservées.')){S.rec=S.rec.filter(x=>x.id!==txCtx.rid);save();closeModal();render();}}
- else if(a==='validate'){const it=dueItems(month).find(x=>x.k===ds.k);if(it)openTx(null,{date:it.d,label:it.r.label,amount:it.amount,cat:it.r.cat,sub:it.r.sub},it.k);}
+ else if(a==='validate'){const it=dueItems(month).find(x=>x.k===ds.k);if(it)openTx(null,{date:it.d,label:it.r.label,amount:it.amount,cat:it.r.cat,sub:it.r.sub,acc:it.r.acc},it.k);}
  else if(a==='skip'){S.skips.push(ds.k);save();render();}
  else if(a==='export')exportJSON();
  else if(a==='impcancel'){imp=null;render();}
@@ -567,7 +692,6 @@ function act(a,ds){
  else if(a==='delrule'){S.rules=S.rules.filter(r=>r.kw!==ds.kw);save();render();}
  else if(a==='delbudget'){delete S.budgets[ds.key];save();render();}
  else if(a==='addbudget'){const v=parseAmount($('b_amt').value);if(!(v>0)){alert('Montant invalide.');return;}S.budgets[$('b_key').value]=v;save();render();}
- else if(a==='calibrate'){const v=parseAmount($('real').value);if(isNaN(v)){alert('Montant invalide.');return;}S.opening=Math.round((v-S.tx.reduce((s,t)=>s+t.amount,0))*100)/100;save();render();}
  else if(a==='wipe'){if(confirm('Effacer toutes les données ?')&&confirm('Dernière confirmation : action irréversible.')){S=defaultState();save();render();}}
 }
 document.addEventListener('click',e=>{const el=e.target.closest('[data-a]');if(el){if(el.tagName==='LABEL')return;act(el.dataset.a,el.dataset);}});
@@ -584,13 +708,15 @@ document.addEventListener('change',e=>{
  else if(t.id==='csv'&&t.files[0]){const rd=new FileReader();rd.onload=()=>{let txt=rd.result;onFile(txt);};rd.readAsText(t.files[0],'utf-8');}
  else if(t.id==='jsonfile'&&t.files[0]){
   const rd=new FileReader();
-  rd.onload=()=>{try{const o=JSON.parse(rd.result);if(!Array.isArray(o.tx))throw 0;if(confirm('Remplacer toutes les données actuelles par cette sauvegarde ?')){S=Object.assign(defaultState(),o);save();render();}}catch(x){alert('Fichier de sauvegarde invalide.');}};
+  rd.onload=()=>{try{const o=JSON.parse(rd.result);if(!Array.isArray(o.tx))throw 0;if(confirm('Remplacer toutes les données actuelles par cette sauvegarde ?')){S=migrate(o);save();render();}}catch(x){alert('Fichier de sauvegarde invalide.');}};
   rd.readAsText(t.files[0]);
  }
  else if(t.dataset&&t.dataset.imp){imp.map[t.dataset.imp]=parseInt(t.value);render();}
  else if(t.name==='mode'){imp.map.mode=t.value;render();}
  else if(t.id==='fcat'){fcat=t.value;pruneSel();render();}
  else if(t.id==='funcl'){funcl=t.checked;pruneSel();render();}
+ else if(t.id==='imp_acc'){imp.acc=t.value;}
+ else if(t.id==='ac_type'&&!txCtx.aid){$('ac_cash').checked=(t.value==='courant'||t.value==='paypal');}
 });
 
 /* ---------- démarrage ---------- */
