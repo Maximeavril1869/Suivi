@@ -86,7 +86,7 @@ td,th{padding:4px;border-bottom:1px solid var(--line);text-align:left}
 <script>
 const KEY='compte-salaire-v1';
 const CATS={
- 'Revenus':['Salaire','Primes','Remboursements','Autres revenus'],
+ 'Revenus':['Salaire','Primes','Remboursements','Intérêts','Autres revenus'],
  'Logement':['Loyer / crédit','Charges','Énergie','Internet / téléphone','Assurance habitation','Travaux / mobilier'],
  'Voiture':['Carburant','Assurance','Entretien / réparations','Péage / parking','Crédit / leasing'],
  'Alimentation':['Courses'],
@@ -143,13 +143,24 @@ function createTransfer(from,to,amt,date,label){
 }
 function linkTransfer(t,otherAcc){
  const pid=uid();
+ const loan=((accById(otherAcc)||{}).type==='emprunt')&&t.amount<0;
+ const sub=loan?'Remboursement':'Entre comptes';
  const cand=S.tx.find(x=>x.acc===otherAcc&&!x.xfer&&x.id!==t.id&&Math.abs(x.amount+t.amount)<0.005&&Math.abs((new Date(x.date+'T12:00:00')-new Date(t.date+'T12:00:00'))/86400000)<=5);
- t.xfer=pid;t.cat='Virement';t.sub='Entre comptes';
- if(cand){cand.xfer=pid;cand.cat='Virement';cand.sub='Entre comptes';return 'lié';}
- S.tx.push({id:uid(),date:t.date,label:t.label,amount:-t.amount,cat:'Virement',sub:'Entre comptes',payee:'',acc:otherAcc,xfer:pid});
+ t.xfer=pid;
+ if(loan)t.cnt=true;else{t.cat='Virement';t.sub='Entre comptes';}
+ if(cand){cand.xfer=pid;cand.cat='Virement';cand.sub=sub;return 'lié';}
+ S.tx.push({id:uid(),date:t.date,label:t.label,amount:-t.amount,cat:'Virement',sub,payee:'',acc:otherAcc,xfer:pid});
  return 'créé';
 }
-function unlinkTransfer(pid){S.tx.filter(x=>x.xfer===pid).forEach(x=>{const c=autoCat(x.label,x.amount);x.cat=c.cat;x.sub=c.sub;if(!x.payee)x.payee=c.payee||'';delete x.xfer;});}
+function unlinkTransfer(pid){
+ const legs=S.tx.filter(x=>x.xfer===pid);
+ if(legs.some(x=>x.cnt)){
+  S.tx=S.tx.filter(x=>!(x.xfer===pid&&!x.cnt));
+  legs.filter(x=>x.cnt).forEach(x=>{delete x.xfer;delete x.cnt;});
+  return;
+ }
+ legs.forEach(x=>{const c=autoCat(x.label,x.amount);x.cat=c.cat;x.sub=c.sub;if(!x.payee)x.payee=c.payee||'';delete x.xfer;});
+}
 
 function occ(r,m){
  const [y,mm]=m.split('-').map(Number);const out=[];const last=dim(y,mm);
@@ -237,7 +248,7 @@ function linkRec(tx){
 function monthStats(m){
  const byCat={},byInc={};let inc=0,exp=0;
  S.tx.forEach(t=>{
-  if(monthOf(t.date)!==m||!inScope(t)||t.xfer)return;
+  if(monthOf(t.date)!==m||!inScope(t)||(t.xfer&&!t.cnt))return;
   if(t.cat==='Revenus'){inc+=t.amount;byInc[t.sub]=(byInc[t.sub]||0)+t.amount;}
   else{exp-=t.amount;const c=byCat[t.cat]||(byCat[t.cat]={total:0,subs:{}});c.total-=t.amount;c.subs[t.sub]=(c.subs[t.sub]||0)-t.amount;}
  });
@@ -245,7 +256,7 @@ function monthStats(m){
 }
 function spentFor(m,key){
  const [c,s]=key.split('|');let v=0;
- S.tx.forEach(t=>{if(monthOf(t.date)===m&&inScope(t)&&!t.xfer&&t.cat===c&&t.cat!=='Revenus'&&(!s||t.sub===s))v-=t.amount;});
+ S.tx.forEach(t=>{if(monthOf(t.date)===m&&inScope(t)&&!(t.xfer&&!t.cnt)&&t.cat===c&&t.cat!=='Revenus'&&(!s||t.sub===s))v-=t.amount;});
  return v;
 }
 function parseCSV(text){
@@ -357,7 +368,11 @@ function payOpts(){return [...new Set(S.tx.map(t=>t.payee).filter(Boolean))].sor
 function txRow(t){
  const chk=sel?`<input type="checkbox" ${sel.has(t.id)?'checked':''} tabindex="-1" style="width:22px;height:22px;margin:0;padding:0;flex:none;pointer-events:none">`:'';
  const o=xferOther(t);
- const base=t.xfer?(t.amount<0?'Virement vers ':'Virement depuis ')+(o?esc(accName(o.acc)):'?'):esc(t.cat)+' › '+esc(t.sub);
+ let base;
+ if(t.xfer&&t.cnt)base=esc(t.cat)+' › '+esc(t.sub)+' · remboursement de '+(o?esc(accName(o.acc)):'?');
+ else if(t.xfer&&o&&o.cnt)base='Remboursement depuis '+esc(accName(o.acc));
+ else if(t.xfer)base=(t.amount<0?'Virement vers ':'Virement depuis ')+(o?esc(accName(o.acc)):'?');
+ else base=esc(t.cat)+' › '+esc(t.sub);
  const sub2=(t.payee?esc(t.label)+' · ':'')+base+(t.recKey?' · récurrent':'')+(S.accounts.length>1?' · '+esc(accName(t.acc)):'');
  return `<div class="row" data-a="${sel?'togsel':'edittx'}" data-id="${esc(t.id)}">${chk}<div class="d">${t.date.slice(8)}/${t.date.slice(5,7)}</div><div class="m"><div class="l">${esc(t.payee||t.label)}</div><div class="s">${sub2}</div></div><div class="a"><div class="${t.amount<0?'neg':'pos'}">${fmt(t.amount)}</div><div class="s">${fmt(t.bal)}</div></div></div>`;
 }
@@ -493,12 +508,14 @@ function openTx(id,pre,recKey){
  const abs=t||pre?String(Math.abs(d.amount)).replace('.',','):'';
  const isX=!!(t&&t.xfer);
  const oth=isX?xferOther(t):null;
- txCtx={id:t?t.id:null,recKey:t?t.recKey:recKey||null,xfer:isX?t.xfer:null};
- const catPart=isX
+ txCtx={id:t?t.id:null,recKey:t?t.recKey:recKey||null,xfer:isX?t.xfer:null,cnt:isX&&!!t.cnt};
+ const pure=isX&&!t.cnt;
+ const catPart=pure
   ?`<p class="s">Virement ${dep?'vers':'depuis'} « ${oth?esc(accName(oth.acc)):'?'} ». Le montant et la date sont répercutés sur l'autre ligne.</p>`
   :`<label>Catégorie<select id="f_cat" data-catsel="f_sub">${catOptions(d.cat)}</select></label>
  <label>Sous-catégorie<select id="f_sub">${subOptions(d.cat,d.sub)}</select></label>`
-  +(S.accounts.length>1?`<label>Cette ligne est un virement avec (facultatif)<select id="f_xacc"><option value="">— pas un virement —</option>${S.accounts.map(a=>`<option value="${esc(a.id)}">${esc(a.name)}</option>`).join('')}</select></label>`:'');
+  +(isX?`<p class="s">Remboursement d'emprunt lié à « ${oth?esc(accName(oth.acc)):'?'} » : le montant et la date sont répercutés sur l'autre ligne.</p>`:'')
+  +(S.accounts.length>1&&!isX?`<label>Virement ou remboursement d'emprunt avec le compte (facultatif)<select id="f_xacc"><option value="">— ni l'un ni l'autre —</option>${S.accounts.map(a=>`<option value="${esc(a.id)}" ${pre&&pre.xacc===a.id?'selected':''}>${esc(a.name)}</option>`).join('')}</select></label>`:'');
  openModal(`<h3>${t?'Modifier la ligne':'Nouvelle ligne'}</h3>
  <div class="seg"><label><input type="radio" name="ty" value="dep" ${dep?'checked':''}>Dépense</label><label><input type="radio" name="ty" value="rec" ${dep?'':'checked'}>Recette</label></div>
  <label>Montant (€)<input id="f_amt" inputmode="decimal" value="${abs}"></label>
@@ -508,7 +525,7 @@ function openTx(id,pre,recKey){
  ${accSelect('f_acc',(t&&t.acc)||(pre&&pre.acc)||defAcc())}
  ${catPart}
  <div class="btns"><button class="ghost" data-a="closem">Annuler</button><button class="primary" data-a="savetx">Enregistrer</button></div>
- ${isX?'<div style="margin-top:10px"><button class="ghost" style="width:100%" data-a="unlink">Ce n\'est pas un virement (délier)</button></div>':''}
+ ${isX?`<div style="margin-top:10px"><button class="ghost" style="width:100%" data-a="unlink">${t.cnt?'Ce n\'est pas un remboursement d\'emprunt (délier)':'Ce n\'est pas un virement (délier)'}</button></div>`:''}
  ${t?'<div style="margin-top:10px"><button class="danger" style="width:100%" data-a="deltx">Supprimer cette ligne</button></div>':''}`);
 }
 function saveTx(){
@@ -520,10 +537,10 @@ function saveTx(){
  const payee=$('f_pay').value.trim();
  const prevTx=txCtx.id?S.tx.find(x=>x.id===txCtx.id):null;
  const accId=$('f_acc')?$('f_acc').value:((prevTx&&prevTx.acc)||defAcc());
- const isX=!!txCtx.xfer;
+ const isX=!!txCtx.xfer,pure=isX&&!txCtx.cnt;
  const xacc=(!isX&&$('f_xacc'))?$('f_xacc').value:'';
  if(xacc&&xacc===accId){alert('Choisis un autre compte pour le virement.');return;}
- const cat=isX?'Virement':$('f_cat').value,sub=isX?'Entre comptes':$('f_sub').value;
+ const cat=pure?'Virement':$('f_cat').value,sub=pure?((prevTx&&prevTx.sub)||'Entre comptes'):$('f_sub').value;
  const amount=Math.round((ty==='dep'?-a:a)*100)/100;
  const before=autoCat(label,amount);
  let tx;
@@ -569,6 +586,7 @@ function openAcc(id){
  <label>Type<select id="ac_type">${Object.keys(ACC_TYPES).map(k=>`<option value="${k}" ${k===d.type?'selected':''}>${ACC_TYPES[k]}</option>`).join('')}</select></label>
  <label style="display:flex;align-items:center;gap:10px;color:var(--tx)"><input type="checkbox" id="ac_cash" ${d.cash?'checked':''} style="width:22px;height:22px;margin:0;padding:0">Compter dans le reste à vivre</label>
  <label>${a?'Mon solde réel aujourd\'hui (€) — vide = ne pas changer':'Solde actuel (€)'}<input id="ac_bal" inputmode="decimal" placeholder="ex. 1234,56"></label>
+ <p class="s" style="margin-top:-6px">Emprunt : saisis le capital restant dû en négatif (ex. -150000). Il ne compte pas dans le reste à vivre si la case est décochée.</p>
  <div class="btns"><button class="ghost" data-a="closem">Annuler</button><button class="primary" data-a="saveacc">Enregistrer</button></div>
  ${a?'<div style="margin-top:10px"><button class="danger" style="width:100%" data-a="delacc">Supprimer ce compte</button></div>':''}`);
 }
@@ -644,13 +662,14 @@ function savePlan(){
 }
 function openRec(id){
  const r=id?S.rec.find(x=>x.id===id):null;
- const d=r||{label:'',amount:-0.01,cat:'Logement',sub:'Loyer / crédit',freq:'monthly',day:1,every:1,start:today(),end:'',match:''};
+ const d=r||{label:'',amount:-0.01,cat:'Logement',sub:'Loyer / crédit',freq:'monthly',day:new Date().getDate(),every:1,start:today(),end:'',match:''};
  const curAmt=r?amountAt(r,today()):d.amount;
  const dep=curAmt<=0;
  txCtx={rid:r?r.id:null,cur:curAmt};
  openModal(`<h3>${r?'Modifier la récurrence':'Nouvelle récurrence'}</h3>
  <label>Libellé<input id="r_lab" value="${esc(d.label)}"></label>
  ${accSelect('r_acc',d.acc||defAcc())}
+ ${S.accounts.some(a=>a.type==='emprunt')?`<label>Rembourse l'emprunt (facultatif)<select id="r_loan"><option value="">— aucun —</option>${S.accounts.filter(a=>a.type==='emprunt').map(a=>`<option value="${esc(a.id)}" ${d.loan===a.id?'selected':''}>${esc(a.name)}</option>`).join('')}</select></label>`:''}
  <div class="seg"><label><input type="radio" name="rty" value="dep" ${dep?'checked':''}>Dépense</label><label><input type="radio" name="rty" value="rec" ${dep?'':'checked'}>Recette</label></div>
  <label>Montant habituel (€) — modifiable à chaque validation<input id="r_amt" inputmode="decimal" value="${r?String(Math.abs(curAmt)).replace('.',','):''}"></label>
  ${r?`<div id="r_fromw" style="display:none"><label>Nouveau montant applicable à partir du<input id="r_from" type="date" value="${today()}"></label><p class="s" style="margin-top:-6px">Les échéances et les écritures liées à cette récurrence à partir de cette date prendront le nouveau montant.</p></div>`:''}
@@ -681,7 +700,7 @@ function saveRec(){
  const freq=$('r_freq').value;
  const newAmt=Math.round((ty==='dep'?-a:a)*100)/100;
  const old=txCtx.rid?S.rec.find(x=>x.id===txCtx.rid):null;
- const r={id:txCtx.rid||uid(),label,amount:newAmt,acc:$('r_acc')?$('r_acc').value:(old?old.acc:defAcc()),cat:$('r_cat').value,sub:$('r_sub').value,freq,day:parseInt($('r_day').value)||parseInt(start.slice(8)),every:Math.max(1,parseInt($('r_every').value)||1),start,end:$('r_end').value||'',match:$('r_match').value.trim()};
+ const r={id:txCtx.rid||uid(),label,amount:newAmt,acc:$('r_acc')?$('r_acc').value:(old?old.acc:defAcc()),loan:$('r_loan')?$('r_loan').value:(old&&old.loan||''),cat:$('r_cat').value,sub:$('r_sub').value,freq,day:parseInt($('r_day').value)||parseInt(start.slice(8)),every:Math.max(1,parseInt($('r_every').value)||1),start,end:$('r_end').value||'',match:$('r_match').value.trim()};
  if(freq==='monthly'&&!$('r_day').value)r.day=parseInt(start.slice(8));
  if(old&&old.hist)r.hist=old.hist;
  if(old&&Math.abs(newAmt-txCtx.cur)>0.004){
@@ -773,7 +792,7 @@ function act(a,ds){
  else if(a==='saverec')saveRec();
  else if(a==='deltx'){const t=S.tx.find(x=>x.id===txCtx.id);const isX=!!(t&&t.xfer);if(confirm(isX?'Supprimer ce virement ? Les deux lignes (les deux comptes) seront supprimées.':'Supprimer cette ligne ?')){S.tx=S.tx.filter(x=>isX?x.xfer!==t.xfer:x.id!==txCtx.id);save();closeModal();render();}}
  else if(a==='delrec'){if(confirm('Supprimer cette récurrence ? Les lignes déjà validées sont conservées.')){S.rec=S.rec.filter(x=>x.id!==txCtx.rid);save();closeModal();render();}}
- else if(a==='validate'){const it=dueItems(month).find(x=>x.k===ds.k);if(it)openTx(null,{date:it.d,label:it.r.label,amount:it.amount,cat:it.r.cat,sub:it.r.sub,acc:it.r.acc,payee:it.r.payee||''},it.k);}
+ else if(a==='validate'){const it=dueItems(month).find(x=>x.k===ds.k);if(it)openTx(null,{date:it.d,label:it.r.label,amount:it.amount,cat:it.r.cat,sub:it.r.sub,acc:it.r.acc,payee:it.r.payee||'',xacc:it.r.loan||''},it.k);}
  else if(a==='skip'){S.skips.push(ds.k);save();render();}
  else if(a==='export')exportJSON();
  else if(a==='impcancel'){imp=null;render();}
@@ -804,6 +823,7 @@ document.addEventListener('change',e=>{
  else if(t.name==='mode'){imp.map.mode=t.value;render();}
  else if(t.id==='fcat'){fcat=t.value;pruneSel();render();}
  else if(t.id==='funcl'){funcl=t.checked;pruneSel();render();}
+ else if(t.id==='r_start'&&$('r_day')&&$('r_freq').value==='monthly'){const dd=parseInt(t.value.slice(8));if(dd)$('r_day').value=dd;}
  else if(t.id==='imp_acc'){imp.acc=t.value;}
  else if(t.id==='ac_type'&&!txCtx.aid){$('ac_cash').checked=(t.value==='courant'||t.value==='paypal');}
 });
