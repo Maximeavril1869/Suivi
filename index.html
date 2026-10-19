@@ -414,7 +414,7 @@ function bulkRuleKw(q,ids,o){
 function openBulk(){
  if(!sel||!sel.size){alert('Aucune ligne sélectionnée.');return;}
  openModal(`<h3>Modifier ${sel.size} ligne(s)</h3><p class="s" style="margin-top:0">Ne remplis que ce que tu veux changer : le reste est conservé tel quel sur chaque ligne.</p>
- <label>Tiers (commerçant)<input id="bk_pay" list="paylist2" autocomplete="off"><datalist id="paylist2">${payOpts()}</datalist></label>
+ <label>Tiers<input id="bk_pay" list="paylist2" autocomplete="off"><datalist id="paylist2">${payOpts()}</datalist></label>
  <label>Catégorie<select id="bk_cat" data-catsel="bk_sub"><option value="">— inchangée —</option>${catOptions('')}</select></label>
  <label>Sous-catégorie<select id="bk_sub"></select></label>
  <label>Libellé<input id="bk_lab" placeholder="inchangé si vide"></label>
@@ -521,7 +521,7 @@ function openTx(id,pre,recKey){
  <label>Montant (€)<input id="f_amt" inputmode="decimal" value="${abs}"></label>
  <label>Date<input id="f_date" type="date" value="${esc(d.date)}"></label>
  <label>Libellé<input id="f_lab" value="${esc(d.label)}"></label>
- <label>Tiers (commerçant)<input id="f_pay" list="paylist" autocomplete="off" value="${esc(d.payee||'')}"><datalist id="paylist">${payOpts()}</datalist></label>
+ <label>Tiers<input id="f_pay" list="paylist" autocomplete="off" value="${esc(d.payee||'')}"><datalist id="paylist">${payOpts()}</datalist></label>
  ${accSelect('f_acc',(t&&t.acc)||(pre&&pre.acc)||defAcc())}
  ${catPart}
  <div class="btns"><button class="ghost" data-a="closem">Annuler</button><button class="primary" data-a="savetx">Enregistrer</button></div>
@@ -615,7 +615,7 @@ function openPlan(id){
  const lock=planKeys();
  txCtx={pid:pl?pl.id:null};
  const top=`<label>Libellé<input id="pl_lab" value="${esc(d.label)}" placeholder="ex. Canapé"></label>
- <label>Tiers (commerçant)<input id="pl_pay" list="paylist" autocomplete="off" value="${esc(d.payee||'')}"><datalist id="paylist">${payOpts()}</datalist></label>
+ <label>Tiers<input id="pl_pay" list="paylist" autocomplete="off" value="${esc(d.payee||'')}"><datalist id="paylist">${payOpts()}</datalist></label>
  ${accSelect('pl_acc',d.acc)}
  <label>Catégorie<select id="pl_cat" data-catsel="pl_sub">${catOptions(d.cat)}</select></label>
  <label>Sous-catégorie<select id="pl_sub">${subOptions(d.cat,d.sub)}</select></label>
