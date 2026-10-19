@@ -134,8 +134,8 @@ function dueItems(m){
 }
 function autoCat(label,amount){
  const n=norm(label);
- for(const r of S.rules){if(n.includes(r.kw))return{cat:r.cat,sub:r.sub};}
- return amount>0?{cat:'Revenus',sub:'Autres revenus'}:{cat:'Divers',sub:'Non classé'};
+ for(const r of S.rules){if(n.includes(r.kw))return{cat:r.cat,sub:r.sub,payee:r.payee||''};}
+ return amount>0?{cat:'Revenus',sub:'Autres revenus',payee:''}:{cat:'Divers',sub:'Non classé',payee:''};
 }
 function kwFrom(label){
  const stop=['CARTE','PAIEMENT','PRLV','VIR','VIREMENT','CB','PRELEVEMENT','SEPA','ACHAT','FACTURE'];
@@ -209,7 +209,7 @@ function parseDate(s){
 }
 
 /* ---------- état UI ---------- */
-let view='home',month=today().slice(0,7),search='',imp=null,txCtx={},persisted=null;
+let view='home',month=today().slice(0,7),search='',imp=null,txCtx={},persisted=null,fcat='',funcl=false,sel=null;
 const $=id=>document.getElementById(id);
 const monthNav=()=>`<div class="mnav"><button data-a="prev">‹</button><b>${esc(monthLabel(month))}</b><button data-a="next">›</button></div>`;
 const catOptions=sel=>Object.keys(CATS).map(c=>`<option ${c===sel?'selected':''}>${esc(c)}</option>`).join('');
@@ -269,21 +269,68 @@ function homeHTML(){
  h+=`<div class="card"><b>6 derniers mois</b>${chartSVG(month)}</div>`;
  return h;
 }
+function payOpts(){return [...new Set(S.tx.map(t=>t.payee).filter(Boolean))].sort().map(p=>`<option value="${esc(p)}">`).join('');}
 function txRow(t){
- return `<div class="row" data-a="edittx" data-id="${esc(t.id)}"><div class="d">${t.date.slice(8)}/${t.date.slice(5,7)}</div><div class="m"><div class="l">${esc(t.label)}</div><div class="s">${esc(t.cat)} › ${esc(t.sub)}${t.recKey?' · récurrent':''}</div></div><div class="a"><div class="${t.amount<0?'neg':'pos'}">${fmt(t.amount)}</div><div class="s">${fmt(t.bal)}</div></div></div>`;
+ const chk=sel?`<input type="checkbox" ${sel.has(t.id)?'checked':''} tabindex="-1" style="width:22px;height:22px;margin:0;padding:0;flex:none;pointer-events:none">`:'';
+ const sub2=(t.payee?esc(t.label)+' · ':'')+esc(t.cat)+' › '+esc(t.sub)+(t.recKey?' · récurrent':'');
+ return `<div class="row" data-a="${sel?'togsel':'edittx'}" data-id="${esc(t.id)}">${chk}<div class="d">${t.date.slice(8)}/${t.date.slice(5,7)}</div><div class="m"><div class="l">${esc(t.payee||t.label)}</div><div class="s">${sub2}</div></div><div class="a"><div class="${t.amount<0?'neg':'pos'}">${fmt(t.amount)}</div><div class="s">${fmt(t.bal)}</div></div></div>`;
+}
+function filteredTx(){
+ let items=withBalance();
+ const active=!!(search||fcat||funcl);
+ if(!active)items=items.filter(t=>monthOf(t.date)===month);
+ if(search){const q=norm(search);items=items.filter(t=>norm(t.label+' '+(t.payee||'')+' '+t.cat+' '+t.sub).includes(q));}
+ if(fcat)items=items.filter(t=>t.cat===fcat);
+ if(funcl)items=items.filter(t=>t.sub==='Non classé');
+ return{items:items.slice().reverse(),active};
+}
+function pruneSel(){if(!sel)return;const vis=new Set(filteredTx().items.map(t=>t.id));sel=new Set([...sel].filter(id=>vis.has(id)));}
+function selCtl(){
+ if(!sel)return `<button class="ghost small" data-a="selstart">Sélectionner plusieurs</button>`;
+ return `<button class="ghost small" data-a="selall">Tout sélectionner</button><button class="primary small" data-a="bulk">Modifier (${sel.size})</button><button class="ghost small" data-a="selend">Terminer</button>`;
 }
 function listHTML(){
- const all=withBalance();
- let items;
- if(search){const q=norm(search);items=all.filter(t=>norm(t.label+' '+t.cat+' '+t.sub).includes(q));}
- else items=all.filter(t=>monthOf(t.date)===month);
- const sum=items.reduce((a,t)=>a+t.amount,0);
- items=items.slice().reverse();
+ const {items,active}=filteredTx();
  if(!items.length)return '<p class="mut">Aucune ligne.</p>';
- return `<div class="s" style="margin-bottom:6px">${items.length} ligne(s) · total ${fmt(sum)}${search?' · tous mois confondus':''}</div>`+items.map(txRow).join('');
+ const sum=items.reduce((a,t)=>a+t.amount,0);
+ return `<div class="s" style="margin-bottom:6px">${items.length} ligne(s) · total ${fmt(sum)}${active?' · tous mois confondus (filtre actif)':''}</div>`+items.map(txRow).join('');
 }
+function refreshList(){const l=$('list');if(l)l.innerHTML=listHTML();const c=$('selctl');if(c)c.innerHTML=selCtl();}
 function linesHTML(){
- return `${monthNav()}<input id="s" type="search" placeholder="Rechercher (libellé, catégorie, tous mois)" value="${esc(search)}"><div class="card" id="list">${listHTML()}</div><button class="fab" data-a="newtx" aria-label="Ajouter">+</button>`;
+ const cats=Object.keys(CATS).map(c=>`<option ${c===fcat?'selected':''}>${esc(c)}</option>`).join('');
+ return `${monthNav()}<input id="s" type="search" placeholder="Rechercher (libellé, tiers, catégorie…)" value="${esc(search)}">
+ <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px"><select id="fcat" style="margin:0"><option value="">Toutes catégories</option>${cats}</select><label style="display:flex;align-items:center;gap:6px;white-space:nowrap;margin:0;color:var(--tx)"><input type="checkbox" id="funcl" ${funcl?'checked':''} style="width:20px;height:20px;margin:0;padding:0">Non classées</label></div>
+ <div class="btns" id="selctl" style="margin-bottom:10px">${selCtl()}</div>
+ <div class="card" id="list">${listHTML()}</div>${sel?'':'<button class="fab" data-a="newtx" aria-label="Ajouter">+</button>'}`;
+}
+function applyBulkTo(ids,o){let n=0;S.tx.forEach(t=>{if(!ids.has(t.id))return;if(o.cat){t.cat=o.cat;t.sub=o.sub;}if(o.payee)t.payee=o.payee;if(o.lab)t.label=o.lab;if(o.date)t.date=o.date;n++;});return n;}
+function bulkRuleKw(q,ids,o){
+ const kw=norm(q);
+ if(!o.cat||kw.length<3||S.rules.some(r=>r.kw===kw))return '';
+ const all=S.tx.filter(t=>ids.has(t.id));
+ return all.length&&all.every(t=>norm(t.label).includes(kw))?kw:'';
+}
+function openBulk(){
+ if(!sel||!sel.size){alert('Aucune ligne sélectionnée.');return;}
+ openModal(`<h3>Modifier ${sel.size} ligne(s)</h3><p class="s" style="margin-top:0">Ne remplis que ce que tu veux changer : le reste est conservé tel quel sur chaque ligne.</p>
+ <label>Tiers (commerçant)<input id="bk_pay" list="paylist2" autocomplete="off"><datalist id="paylist2">${payOpts()}</datalist></label>
+ <label>Catégorie<select id="bk_cat" data-catsel="bk_sub"><option value="">— inchangée —</option>${catOptions('')}</select></label>
+ <label>Sous-catégorie<select id="bk_sub"></select></label>
+ <label>Libellé<input id="bk_lab" placeholder="inchangé si vide"></label>
+ <label>Date<input id="bk_date" type="date"></label>
+ <div class="btns"><button class="ghost" data-a="closem">Annuler</button><button class="primary" data-a="applybulk">Appliquer</button></div>
+ <div style="margin-top:10px"><button class="danger" style="width:100%" data-a="delbulk">Supprimer ces ${sel.size} ligne(s)</button></div>`);
+}
+function applyBulk(){
+ const o={payee:$('bk_pay').value.trim(),cat:$('bk_cat').value,sub:$('bk_sub').value,lab:$('bk_lab').value.trim(),date:$('bk_date').value};
+ if(!o.payee&&!o.cat&&!o.lab&&!o.date){alert('Rien à modifier.');return;}
+ const kw=bulkRuleKw(search,sel,o);
+ applyBulkTo(sel,o);
+ if(kw&&confirm('Appliquer aussi cette catégorie aux futurs imports dont le libellé contient « '+kw+' » ?')){
+  S.rules.push({kw,cat:o.cat,sub:o.sub,payee:o.payee});
+  S.tx.forEach(t=>{if(t.cat==='Divers'&&t.sub==='Non classé'&&norm(t.label).includes(kw)){t.cat=o.cat;t.sub=o.sub;if(o.payee&&!t.payee)t.payee=o.payee;}});
+ }
+ sel=null;save();closeModal();render();
 }
 function freqText(r){
  if(r.freq==='monthly')return 'Chaque mois le '+(r.day||1);
@@ -330,7 +377,7 @@ function impHTML(){
 function setHTML(){
  const budOpts=Object.keys(CATS).filter(c=>c!=='Revenus').map(c=>`<option value="${esc(c)}">${esc(c)} (toute la catégorie)</option>`+CATS[c].map(s=>`<option value="${esc(c+'|'+s)}">${esc(c)} › ${esc(s)}</option>`).join('')).join('');
  const buds=Object.keys(S.budgets).map(k=>`<div class="row"><div class="m">${esc(k.replace('|',' › '))}</div><div>${fmt(S.budgets[k])}</div><button class="ghost small" data-a="delbudget" data-key="${esc(k)}">Retirer</button></div>`).join('')||'<p class="mut">Aucun budget.</p>';
- const rules=S.rules.map(r=>`<div class="row"><div class="m"><div class="l">${esc(r.kw)}</div><div class="s">${esc(r.cat)} › ${esc(r.sub)}</div></div><button class="ghost small" data-a="delrule" data-kw="${esc(r.kw)}">Retirer</button></div>`).join('')||'<p class="mut">Aucune règle. Elles se créent quand tu corriges une catégorie.</p>';
+ const rules=S.rules.map(r=>`<div class="row"><div class="m"><div class="l">${esc(r.kw)}</div><div class="s">${esc(r.cat)} › ${esc(r.sub)}${r.payee?' · '+esc(r.payee):''}</div></div><button class="ghost small" data-a="delrule" data-kw="${esc(r.kw)}">Retirer</button></div>`).join('')||'<p class="mut">Aucune règle. Elles se créent quand tu corriges une catégorie.</p>';
  return `<h2>Réglages</h2>
  <div class="card"><b>Solde</b><p class="s">Solde de départ actuel : ${fmt(S.opening)} · solde calculé aujourd'hui : ${fmt(balanceAt(today()))}</p>
  <label>Mon solde réel aujourd'hui (€)<input id="real" inputmode="decimal" placeholder="ex. 1234,56"></label><button class="primary" data-a="calibrate">Caler le solde</button></div>
@@ -360,6 +407,7 @@ function openTx(id,pre,recKey){
  <label>Montant (€)<input id="f_amt" inputmode="decimal" value="${abs}"></label>
  <label>Date<input id="f_date" type="date" value="${esc(d.date)}"></label>
  <label>Libellé<input id="f_lab" value="${esc(d.label)}"></label>
+ <label>Tiers (commerçant)<input id="f_pay" list="paylist" autocomplete="off" value="${esc(d.payee||'')}"><datalist id="paylist">${payOpts()}</datalist></label>
  <label>Catégorie<select id="f_cat" data-catsel="f_sub">${catOptions(d.cat)}</select></label>
  <label>Sous-catégorie<select id="f_sub">${subOptions(d.cat,d.sub)}</select></label>
  <div class="btns"><button class="ghost" data-a="closem">Annuler</button><button class="primary" data-a="savetx">Enregistrer</button></div>
@@ -371,17 +419,18 @@ function saveTx(){
  if(!(a>0)){alert('Montant invalide.');return;}
  const date=$('f_date').value;if(!date){alert('Date manquante.');return;}
  const label=$('f_lab').value.trim()||'Sans libellé';
+ const payee=$('f_pay').value.trim();
  const cat=$('f_cat').value,sub=$('f_sub').value;
  const amount=Math.round((ty==='dep'?-a:a)*100)/100;
  const before=autoCat(label,amount);
- if(txCtx.id){Object.assign(S.tx.find(x=>x.id===txCtx.id),{date,label,amount,cat,sub});}
- else{const t={id:uid(),date,label,amount,cat,sub};if(txCtx.recKey)t.recKey=txCtx.recKey;S.tx.push(t);}
+ if(txCtx.id){Object.assign(S.tx.find(x=>x.id===txCtx.id),{date,label,amount,cat,sub,payee});}
+ else{const t={id:uid(),date,label,amount,cat,sub,payee};if(txCtx.recKey)t.recKey=txCtx.recKey;S.tx.push(t);}
  const kw=kwFrom(label);
  let ruleAdded=false;
- if(!txCtx.recKey&&kw&&sub!=='Non classé'&&(before.cat!==cat||before.sub!==sub)&&!S.rules.some(r=>r.kw===kw)){
+ if(!txCtx.recKey&&kw&&sub!=='Non classé'&&(before.cat!==cat||before.sub!==sub||(payee&&payee!==before.payee))&&!S.rules.some(r=>r.kw===kw)){
   if(confirm('Classer automatiquement les lignes « '+kw+' » en '+cat+' › '+sub+' ?')){
-   S.rules.push({kw,cat,sub});ruleAdded=true;
-   S.tx.forEach(t=>{if(t.cat==='Divers'&&t.sub==='Non classé'&&norm(t.label).includes(kw)){t.cat=cat;t.sub=sub;}});
+   S.rules.push({kw,cat,sub,payee});ruleAdded=true;
+   S.tx.forEach(t=>{if(t.cat==='Divers'&&t.sub==='Non classé'&&norm(t.label).includes(kw)){t.cat=cat;t.sub=sub;if(payee&&!t.payee)t.payee=payee;}});
   }
  }
  save();closeModal();month=monthOf(date);render();
@@ -438,7 +487,7 @@ function doImport(){
   const k=r.date+'|'+r.amount.toFixed(2)+'|'+norm(r.label);
   if(have[k]>0){have[k]--;dup++;return;}
   const c=autoCat(r.label,r.amount);
-  const tx={id:uid(),date:r.date,label:r.label,amount:r.amount,cat:c.cat,sub:c.sub};
+  const tx={id:uid(),date:r.date,label:r.label,amount:r.amount,cat:c.cat,sub:c.sub,payee:c.payee||''};
   linkRec(tx);S.tx.push(tx);added++;if(r.date>last)last=r.date;
  });
  S.csvMaps[imp.sig]=imp.map;save();
@@ -464,10 +513,17 @@ function onFile(text){
  imp={header,data,sig,map};render();
 }
 function act(a,ds){
- if(a==='nav'){view=ds.v;window.scrollTo(0,0);render();}
- else if(a==='prev'){month=addMonths(month,-1);render();}
- else if(a==='next'){month=addMonths(month,1);render();}
+ if(a==='nav'){sel=null;view=ds.v;window.scrollTo(0,0);render();}
+ else if(a==='prev'){month=addMonths(month,-1);pruneSel();render();}
+ else if(a==='next'){month=addMonths(month,1);pruneSel();render();}
  else if(a==='newtx')openTx(null);
+ else if(a==='selstart'){sel=new Set();render();}
+ else if(a==='selend'){sel=null;render();}
+ else if(a==='togsel'){if(sel){if(sel.has(ds.id))sel.delete(ds.id);else sel.add(ds.id);refreshList();}}
+ else if(a==='selall'){if(sel){const ids=filteredTx().items.map(t=>t.id);if(ids.length&&ids.every(id=>sel.has(id)))sel=new Set();else sel=new Set(ids);refreshList();}}
+ else if(a==='bulk')openBulk();
+ else if(a==='applybulk')applyBulk();
+ else if(a==='delbulk'){if(sel&&confirm('Supprimer '+sel.size+' ligne(s) ? Action irréversible.')){S.tx=S.tx.filter(x=>!sel.has(x.id));sel=null;save();closeModal();render();}}
  else if(a==='edittx')openTx(ds.id);
  else if(a==='newrec')openRec(null);
  else if(a==='editrec')openRec(ds.id);
@@ -488,7 +544,7 @@ function act(a,ds){
  else if(a==='wipe'){if(confirm('Effacer toutes les données ?')&&confirm('Dernière confirmation : action irréversible.')){S=defaultState();save();render();}}
 }
 document.addEventListener('click',e=>{const el=e.target.closest('[data-a]');if(el){if(el.tagName==='LABEL')return;act(el.dataset.a,el.dataset);}});
-document.addEventListener('input',e=>{if(e.target.id==='s'){search=e.target.value;$('list').innerHTML=listHTML();}});
+document.addEventListener('input',e=>{if(e.target.id==='s'){search=e.target.value;pruneSel();refreshList();}});
 document.addEventListener('change',e=>{
  const t=e.target;
  if(t.dataset&&t.dataset.catsel){$(t.dataset.catsel).innerHTML=subOptions(t.value,'');}
@@ -506,6 +562,8 @@ document.addEventListener('change',e=>{
  }
  else if(t.dataset&&t.dataset.imp){imp.map[t.dataset.imp]=parseInt(t.value);render();}
  else if(t.name==='mode'){imp.map.mode=t.value;render();}
+ else if(t.id==='fcat'){fcat=t.value;pruneSel();render();}
+ else if(t.id==='funcl'){funcl=t.checked;pruneSel();render();}
 });
 
 /* ---------- démarrage ---------- */
