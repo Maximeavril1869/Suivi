@@ -126,10 +126,16 @@ function occ(r,m){
  }
  return out;
 }
+function amountAt(r,d){
+ if(!r.hist||!r.hist.length)return r.amount;
+ let v=r.hist[0].amount;
+ for(const e of r.hist){if(e.from<=d)v=e.amount;}
+ return v;
+}
 function dueItems(m){
  const have=new Set(S.tx.filter(t=>t.recKey).map(t=>t.recKey).concat(S.skips));
  const out=[];
- S.rec.forEach(r=>occ(r,m).forEach(d=>{const k=r.id+'|'+d;if(!have.has(k))out.push({r,d,k});}));
+ S.rec.forEach(r=>occ(r,m).forEach(d=>{const k=r.id+'|'+d;if(!have.has(k))out.push({r,d,k,amount:amountAt(r,d)});}));
  return out.sort((a,b)=>a.d<b.d?-1:a.d>b.d?1:0);
 }
 function autoCat(label,amount){
@@ -242,7 +248,7 @@ function homeHTML(){
  }
  h+=monthNav();
  let proj,projLabel;
- if(month===cur){proj=balNow+due.reduce((a,x)=>a+x.r.amount,0);projLabel='Solde prévu fin de mois';}
+ if(month===cur){proj=balNow+due.reduce((a,x)=>a+x.amount,0);projLabel='Solde prévu fin de mois';}
  else{proj=balanceAt(month+'-31');projLabel='Solde fin de mois';}
  h+=`<div class="grid"><div class="card"><div class="s">Solde actuel</div><div class="big ${balNow<0?'neg':''}">${fmt(balNow)}</div></div><div class="card"><div class="s">${projLabel}</div><div class="big ${proj<0?'neg':''}">${fmt(proj)}</div></div><div class="card"><div class="s">Recettes</div><div class="big pos">${fmt(st.inc)}</div></div><div class="card"><div class="s">Dépenses</div><div class="big neg">${fmt(st.exp)}</div></div></div>`;
  if(due.length)h+=`<div class="card warn" data-a="nav" data-v="rec"><b>${due.length} échéance(s) à valider ce mois</b><div class="s">Touche pour les voir</div></div>`;
@@ -342,9 +348,9 @@ function recHTML(){
  const due=dueItems(month);
  let h=monthNav();
  h+=`<div class="card"><b>À valider ce mois</b>`;
- h+=due.length?due.map(x=>`<div class="row"><div class="d">${x.d.slice(8)}/${x.d.slice(5,7)}</div><div class="m"><div class="l">${esc(x.r.label)}</div><div class="s">${esc(x.r.cat)} › ${esc(x.r.sub)}</div></div><div class="a"><div class="${x.r.amount<0?'neg':'pos'}">${fmt(x.r.amount)}</div><div style="margin-top:4px"><button class="primary small" data-a="validate" data-k="${esc(x.k)}">Valider</button> <button class="ghost small" data-a="skip" data-k="${esc(x.k)}">Ignorer</button></div></div></div>`).join(''):'<p class="mut">Rien à valider.</p>';
+ h+=due.length?due.map(x=>`<div class="row"><div class="d">${x.d.slice(8)}/${x.d.slice(5,7)}</div><div class="m"><div class="l">${esc(x.r.label)}</div><div class="s">${esc(x.r.cat)} › ${esc(x.r.sub)}</div></div><div class="a"><div class="${x.amount<0?'neg':'pos'}">${fmt(x.amount)}</div><div style="margin-top:4px"><button class="primary small" data-a="validate" data-k="${esc(x.k)}">Valider</button> <button class="ghost small" data-a="skip" data-k="${esc(x.k)}">Ignorer</button></div></div></div>`).join(''):'<p class="mut">Rien à valider.</p>';
  h+=`</div><div class="card"><b>Mes récurrences</b>`;
- h+=S.rec.length?S.rec.map(r=>`<div class="row" data-a="editrec" data-id="${esc(r.id)}"><div class="m"><div class="l">${esc(r.label)}</div><div class="s">${esc(freqText(r))} · ${esc(r.cat)} › ${esc(r.sub)}</div></div><div class="a ${r.amount<0?'neg':'pos'}">${fmt(r.amount)}</div></div>`).join(''):'<p class="mut">Aucune récurrence.</p>';
+ h+=S.rec.length?S.rec.map(r=>`<div class="row" data-a="editrec" data-id="${esc(r.id)}"><div class="m"><div class="l">${esc(r.label)}</div><div class="s">${esc(freqText(r))} · ${esc(r.cat)} › ${esc(r.sub)}</div></div><div class="a ${amountAt(r,today())<0?'neg':'pos'}">${fmt(amountAt(r,today()))}</div></div>`).join(''):'<p class="mut">Aucune récurrence.</p>';
  h+=`</div><button class="primary" style="width:100%" data-a="newrec">Ajouter une récurrence</button>`;
  return h;
 }
@@ -438,12 +444,14 @@ function saveTx(){
 function openRec(id){
  const r=id?S.rec.find(x=>x.id===id):null;
  const d=r||{label:'',amount:-0.01,cat:'Logement',sub:'Loyer / crédit',freq:'monthly',day:1,every:1,start:today(),end:'',match:''};
- const dep=d.amount<=0;
- txCtx={rid:r?r.id:null};
+ const curAmt=r?amountAt(r,today()):d.amount;
+ const dep=curAmt<=0;
+ txCtx={rid:r?r.id:null,cur:curAmt};
  openModal(`<h3>${r?'Modifier la récurrence':'Nouvelle récurrence'}</h3>
  <label>Libellé<input id="r_lab" value="${esc(d.label)}"></label>
  <div class="seg"><label><input type="radio" name="rty" value="dep" ${dep?'checked':''}>Dépense</label><label><input type="radio" name="rty" value="rec" ${dep?'':'checked'}>Recette</label></div>
- <label>Montant habituel (€) — modifiable à chaque validation<input id="r_amt" inputmode="decimal" value="${r?String(Math.abs(d.amount)).replace('.',','):''}"></label>
+ <label>Montant habituel (€) — modifiable à chaque validation<input id="r_amt" inputmode="decimal" value="${r?String(Math.abs(curAmt)).replace('.',','):''}"></label>
+ ${r?`<div id="r_fromw" style="display:none"><label>Nouveau montant applicable à partir du<input id="r_from" type="date" value="${today()}"></label><p class="s" style="margin-top:-6px">Les échéances et les écritures liées à cette récurrence à partir de cette date prendront le nouveau montant.</p></div>`:''}
  <label>Catégorie<select id="r_cat" data-catsel="r_sub">${catOptions(d.cat)}</select></label>
  <label>Sous-catégorie<select id="r_sub">${subOptions(d.cat,d.sub)}</select></label>
  <label>Fréquence<select id="r_freq"><option value="monthly" ${d.freq==='monthly'?'selected':''}>Mensuelle</option><option value="weekly" ${d.freq==='weekly'?'selected':''}>Hebdomadaire</option><option value="yearly" ${d.freq==='yearly'?'selected':''}>Annuelle</option><option value="days" ${d.freq==='days'?'selected':''}>Tous les N jours</option></select></label>
@@ -455,6 +463,13 @@ function openRec(id){
  <div class="btns"><button class="ghost" data-a="closem">Annuler</button><button class="primary" data-a="saverec">Enregistrer</button></div>
  ${r?'<div style="margin-top:10px"><button class="danger" style="width:100%" data-a="delrec">Supprimer cette récurrence</button></div>':''}`);
 }
+function recAffected(id,from){return S.tx.filter(t=>t.recKey&&t.recKey.indexOf(id+'|')===0&&t.recKey.split('|')[1]>=from);}
+function changeAmount(hist,cur,from,amt){
+ const h=(hist&&hist.length?hist:[{from:'0000-01-01',amount:cur}]).filter(e=>e.from<from);
+ if(!h.length)h.push({from:'0000-01-01',amount:cur});
+ h.push({from,amount:amt});
+ return h.sort((x,y)=>x.from<y.from?-1:x.from>y.from?1:0);
+}
 function saveRec(){
  const ty=document.querySelector('input[name=rty]:checked').value;
  const a=parseAmount($('r_amt').value);
@@ -462,8 +477,20 @@ function saveRec(){
  const label=$('r_lab').value.trim();if(!label){alert('Libellé manquant.');return;}
  const start=$('r_start').value;if(!start){alert('Date de départ manquante.');return;}
  const freq=$('r_freq').value;
- const r={id:txCtx.rid||uid(),label,amount:Math.round((ty==='dep'?-a:a)*100)/100,cat:$('r_cat').value,sub:$('r_sub').value,freq,day:parseInt($('r_day').value)||parseInt(start.slice(8)),every:Math.max(1,parseInt($('r_every').value)||1),start,end:$('r_end').value||'',match:$('r_match').value.trim()};
+ const newAmt=Math.round((ty==='dep'?-a:a)*100)/100;
+ const old=txCtx.rid?S.rec.find(x=>x.id===txCtx.rid):null;
+ const r={id:txCtx.rid||uid(),label,amount:newAmt,cat:$('r_cat').value,sub:$('r_sub').value,freq,day:parseInt($('r_day').value)||parseInt(start.slice(8)),every:Math.max(1,parseInt($('r_every').value)||1),start,end:$('r_end').value||'',match:$('r_match').value.trim()};
  if(freq==='monthly'&&!$('r_day').value)r.day=parseInt(start.slice(8));
+ if(old&&old.hist)r.hist=old.hist;
+ if(old&&Math.abs(newAmt-txCtx.cur)>0.004){
+  const from=$('r_from')?$('r_from').value:'';
+  if(!from){alert("Indique la date à partir de laquelle le nouveau montant s'applique.");return;}
+  const affected=recAffected(old.id,from);
+  if(affected.length&&!confirm(affected.length+' écriture(s) déjà enregistrée(s) à partir du '+frDate(from)+' passeront à '+fmt(newAmt)+'. Continuer ?'))return;
+  r.hist=changeAmount(old.hist,txCtx.cur,from,newAmt);
+  affected.forEach(t=>{t.amount=newAmt;});
+  r.amount=amountAt(r,today());
+ }
  if(txCtx.rid)S.rec[S.rec.findIndex(x=>x.id===txCtx.rid)]=r;else S.rec.push(r);
  save();closeModal();render();
 }
@@ -532,7 +559,7 @@ function act(a,ds){
  else if(a==='saverec')saveRec();
  else if(a==='deltx'){if(confirm('Supprimer cette ligne ?')){S.tx=S.tx.filter(x=>x.id!==txCtx.id);save();closeModal();render();}}
  else if(a==='delrec'){if(confirm('Supprimer cette récurrence ? Les lignes déjà validées sont conservées.')){S.rec=S.rec.filter(x=>x.id!==txCtx.rid);save();closeModal();render();}}
- else if(a==='validate'){const it=dueItems(month).find(x=>x.k===ds.k);if(it)openTx(null,{date:it.d,label:it.r.label,amount:it.r.amount,cat:it.r.cat,sub:it.r.sub},it.k);}
+ else if(a==='validate'){const it=dueItems(month).find(x=>x.k===ds.k);if(it)openTx(null,{date:it.d,label:it.r.label,amount:it.amount,cat:it.r.cat,sub:it.r.sub},it.k);}
  else if(a==='skip'){S.skips.push(ds.k);save();render();}
  else if(a==='export')exportJSON();
  else if(a==='impcancel'){imp=null;render();}
@@ -544,12 +571,12 @@ function act(a,ds){
  else if(a==='wipe'){if(confirm('Effacer toutes les données ?')&&confirm('Dernière confirmation : action irréversible.')){S=defaultState();save();render();}}
 }
 document.addEventListener('click',e=>{const el=e.target.closest('[data-a]');if(el){if(el.tagName==='LABEL')return;act(el.dataset.a,el.dataset);}});
-document.addEventListener('input',e=>{if(e.target.id==='s'){search=e.target.value;pruneSel();refreshList();}});
+document.addEventListener('input',e=>{if(e.target.id==='s'){search=e.target.value;pruneSel();refreshList();}else if(e.target.id==='r_amt'){const w=$('r_fromw');if(w)w.style.display='block';}});
 document.addEventListener('change',e=>{
  const t=e.target;
  if(t.dataset&&t.dataset.catsel){$(t.dataset.catsel).innerHTML=subOptions(t.value,'');}
  else if(t.name==='ty'||t.name==='rty'){
-  const p=t.name==='ty'?'f_':'r_';const c=$(p+'cat');
+  const p=t.name==='ty'?'f_':'r_';const c=$(p+'cat');if(t.name==='rty'&&$('r_fromw'))$('r_fromw').style.display='block';
   if(t.value==='rec'&&c.value!=='Revenus'){c.value='Revenus';$(p+'sub').innerHTML=subOptions('Revenus','');}
   if(t.value==='dep'&&c.value==='Revenus'){c.value='Divers';$(p+'sub').innerHTML=subOptions('Divers','Non classé');}
  }
