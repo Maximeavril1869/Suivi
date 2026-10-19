@@ -215,10 +215,10 @@ function makePlanItems(total,n,start){
  }
  return items;
 }
-function autoCat(label,amount){
- const n=norm(label);
- for(const r of S.rules){if(n.includes(r.kw))return{cat:r.cat,sub:r.sub,payee:r.payee||''};}
- return amount>0?{cat:'Revenus',sub:'Autres revenus',payee:''}:{cat:'Divers',sub:'Non classé',payee:''};
+function autoCat(label,amount,payee){
+ const n=norm(label+' '+(payee||''));
+ for(const r of S.rules){if(n.includes(r.kw))return{cat:r.cat,sub:r.sub,payee:r.payee||payee||''};}
+ return amount>0?{cat:'Revenus',sub:'Autres revenus',payee:payee||''}:{cat:'Divers',sub:'Non classé',payee:payee||''};
 }
 function kwFrom(label){
  const stop=['CARTE','PAIEMENT','PRLV','VIR','VIREMENT','CB','PRELEVEMENT','SEPA','ACHAT','FACTURE'];
@@ -467,7 +467,7 @@ function bulkRuleKw(q,ids,o){
  const kw=norm(q);
  if(!o.cat||kw.length<3||S.rules.some(r=>r.kw===kw))return '';
  const all=S.tx.filter(t=>ids.has(t.id));
- return all.length&&all.every(t=>norm(t.label).includes(kw))?kw:'';
+ return all.length&&all.every(t=>norm(t.label+' '+(t.payee||'')).includes(kw))?kw:'';
 }
 function openBulk(){
  if(!sel||!sel.size){alert('Aucune ligne sélectionnée.');return;}
@@ -488,7 +488,7 @@ function applyBulk(){
  applyBulkTo(sel,o);
  if(kw&&confirm('Appliquer aussi cette catégorie aux futurs imports dont le libellé contient « '+kw+' » ?')){
   S.rules.push({kw,cat:o.cat,sub:o.sub,payee:o.payee});
-  S.tx.forEach(t=>{if(t.cat==='Divers'&&t.sub==='Non classé'&&norm(t.label).includes(kw)){t.cat=o.cat;t.sub=o.sub;if(o.payee&&!t.payee)t.payee=o.payee;}});
+  S.tx.forEach(t=>{if(t.cat==='Divers'&&t.sub==='Non classé'&&norm(t.label+' '+(t.payee||'')).includes(kw)){t.cat=o.cat;t.sub=o.sub;if(o.payee&&!t.payee)t.payee=o.payee;}});
  }
  sel=null;save();closeModal();render();
 }
@@ -521,7 +521,8 @@ function impParse(){
   if(m.mode==='single')amt=parseAmount(r[m.amount]);
   else{const d=parseAmount(r[m.debit]),c=parseAmount(r[m.credit]);amt=(isNaN(c)?0:Math.abs(c))-(isNaN(d)?0:Math.abs(d));if(isNaN(c)&&isNaN(d))amt=NaN;}
   if(!date||isNaN(amt)||amt===0){bad++;return;}
-  ok.push({date,label:label||'Sans libellé',amount:Math.round(amt*100)/100});
+  const payee=m.payee>=0?String(r[m.payee]==null?'':r[m.payee]).trim():'';
+  ok.push({date,label:label||payee||'Sans libellé',payee,amount:Math.round(amt*100)/100});
  });
  return{ok,bad};
 }
@@ -530,8 +531,8 @@ function impHTML(){
  const m=imp.map,hd=imp.header;
  const opts=sel=>`<option value="-1">—</option>`+hd.map((h,i)=>`<option value="${i}" ${i===sel?'selected':''}>${esc(h||('Colonne '+(i+1)))}</option>`).join('');
  const res=impParse();
- const prev=res.ok.slice(0,5).map(r=>`<tr><td>${frDate(r.date)}</td><td>${esc(r.label.slice(0,28))}</td><td>${fmt(r.amount)}</td></tr>`).join('');
- return `<h2>Import CSV</h2><div class="card">${accSelect('imp_acc',imp.acc)}<label>Date<select data-imp="date">${opts(m.date)}</select></label><label>Libellé<select data-imp="label">${opts(m.label)}</select></label>
+ const prev=res.ok.slice(0,5).map(r=>`<tr><td>${frDate(r.date)}</td><td>${esc(r.label.slice(0,28))}${r.payee?'<div class="s">Tiers : '+esc(r.payee.slice(0,28))+'</div>':''}</td><td>${fmt(r.amount)}</td></tr>`).join('');
+ return `<h2>Import CSV</h2><div class="card">${accSelect('imp_acc',imp.acc)}<label>Date<select data-imp="date">${opts(m.date)}</select></label><label>Libellé<select data-imp="label">${opts(m.label)}</select></label><label>Tiers (facultatif)<select data-imp="payee">${opts(m.payee==null?-1:m.payee)}</select></label>
  <div class="seg"><label><input type="radio" name="mode" value="single" ${m.mode==='single'?'checked':''}>1 colonne montant</label><label><input type="radio" name="mode" value="split" ${m.mode==='split'?'checked':''}>Débit / Crédit</label></div>
  ${m.mode==='single'?`<label>Montant (négatif = dépense)<select data-imp="amount">${opts(m.amount)}</select></label>`:`<label>Débit<select data-imp="debit">${opts(m.debit)}</select></label><label>Crédit<select data-imp="credit">${opts(m.credit)}</select></label>`}
  </div><div class="card"><b>Aperçu</b> <span class="s">${res.ok.length} ligne(s) lisible(s), ${res.bad} ignorée(s)</span><table>${prev||'<tr><td>Rien de lisible : vérifie les colonnes.</td></tr>'}</table></div>
@@ -600,17 +601,17 @@ function saveTx(){
  if(xacc&&xacc===accId){alert('Choisis un autre compte pour le virement.');return;}
  const cat=pure?'Virement':$('f_cat').value,sub=pure?((prevTx&&prevTx.sub)||'Entre comptes'):$('f_sub').value;
  const amount=Math.round((ty==='dep'?-a:a)*100)/100;
- const before=autoCat(label,amount);
+ const before=autoCat(label,amount,payee);
  let tx;
  if(prevTx){tx=prevTx;Object.assign(tx,{date,label,amount,cat,sub,payee,acc:accId});}
  else{tx={id:uid(),date,label,amount,cat,sub,payee,acc:accId};if(txCtx.recKey)tx.recKey=txCtx.recKey;S.tx.push(tx);}
  if(isX){const o=xferOther(tx);if(o){o.amount=-amount;o.date=date;}}
  if(xacc)linkTransfer(tx,xacc);
- const kw=kwFrom(label);
+ const kw=(payee&&kwFrom(payee))||kwFrom(label);
  if(!isX&&!xacc&&!txCtx.recKey&&kw&&sub!=='Non classé'&&(before.cat!==cat||before.sub!==sub||(payee&&payee!==before.payee))&&!S.rules.some(r=>r.kw===kw)){
   if(confirm('Classer automatiquement les lignes « '+kw+' » en '+cat+' › '+sub+' ?')){
    S.rules.push({kw,cat,sub,payee});
-   S.tx.forEach(t=>{if(t.cat==='Divers'&&t.sub==='Non classé'&&norm(t.label).includes(kw)){t.cat=cat;t.sub=sub;if(payee&&!t.payee)t.payee=payee;}});
+   S.tx.forEach(t=>{if(t.cat==='Divers'&&t.sub==='Non classé'&&norm(t.label+' '+(t.payee||'')).includes(kw)){t.cat=cat;t.sub=sub;if(payee&&!t.payee)t.payee=payee;}});
   }
  }
  save();closeModal();setAnchor(date);render();
@@ -792,7 +793,7 @@ function doImport(){
  ok.forEach(r=>{
   const k=r.date+'|'+r.amount.toFixed(2)+'|'+norm(r.label);
   if(have[k]>0){have[k]--;dup++;return;}
-  const c=autoCat(r.label,r.amount);
+  const c=autoCat(r.label,r.amount,r.payee);
   const tx={id:uid(),date:r.date,label:r.label,amount:r.amount,cat:c.cat,sub:c.sub,payee:c.payee||'',acc:imp.acc};
   linkRec(tx);S.tx.push(tx);added++;if(r.date>last)last=r.date;
  });
@@ -814,8 +815,10 @@ function onFile(text){
  if(!map){
   const d=guessCol(header,/date/i),l=guessCol(header,/libell|label|descr|d[ée]tail|objet|intitul/i);
   const a=guessCol(header,/montant|amount|somme/i),db=guessCol(header,/d[ée]bit/i),cr=guessCol(header,/cr[ée]dit/i);
-  map={date:d,label:l,amount:a,debit:db,credit:cr,mode:(a<0&&db>=0&&cr>=0)?'split':'single'};
+  let py=guessCol(header,/tiers|b[ée]n[ée]ficiaire|payee|commer[cç]ant|marchand|merchant|contrepartie|[ée]metteur|nom/i);if(py===l||py===d)py=-1;
+  map={date:d,label:l,payee:py,amount:a,debit:db,credit:cr,mode:(a<0&&db>=0&&cr>=0)?'split':'single'};
  }
+ if(map.payee===undefined){const l=map.label,d=map.date;let py=guessCol(header,/tiers|b[ée]n[ée]ficiaire|payee|commer[cç]ant|marchand|merchant|contrepartie|[ée]metteur|nom/i);if(py===l||py===d)py=-1;map=Object.assign({},map,{payee:py});}
  imp={header,data,sig,map,acc:(map.acc&&accById(map.acc))?map.acc:defAcc()};render();
 }
 function act(a,ds){
