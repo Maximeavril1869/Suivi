@@ -96,7 +96,7 @@ const CATS={
  'Divers':['Cadeaux','Imprévus','Non classé']
 };
 const RK='Loisirs|Restaurants / bars';
-const defaultState=()=>({v:2,accounts:[{id:'a1',name:'Compte salaire',type:'courant',opening:0,cash:true}],shown:['a1'],tx:[],rec:[],rules:[],budgets:{},csvMaps:{},skips:[],lastExport:null});
+const defaultState=()=>({v:2,accounts:[{id:'a1',name:'Compte salaire',type:'courant',opening:0,cash:true}],shown:['a1'],tx:[],rec:[],plans:[],rules:[],budgets:{},csvMaps:{},skips:[],lastExport:null});
 function migrate(raw){
  const o=Object.assign(defaultState(),raw||{});
  if(!raw||!Array.isArray(raw.accounts)||!raw.accounts.length){o.accounts=[{id:'a1',name:'Compte salaire',type:'courant',opening:(raw&&raw.opening)||0,cash:true}];o.shown=['a1'];}
@@ -174,7 +174,28 @@ function dueItems(m){
  const have=new Set(S.tx.filter(t=>t.recKey).map(t=>t.recKey).concat(S.skips));
  const out=[];
  S.rec.filter(r=>S.shown.includes(r.acc)).forEach(r=>occ(r,m).forEach(d=>{const k=r.id+'|'+d;if(!have.has(k))out.push({r,d,k,amount:amountAt(r,d)});}));
+ S.plans.filter(pl=>S.shown.includes(pl.acc)).forEach(pl=>pl.items.forEach((it,i)=>{
+  if(monthOf(it.date)!==m)return;
+  const k=pl.id+'|'+it.date;if(have.has(k))return;
+  out.push({r:{id:pl.id,label:pl.label+' ('+(i+1)+'/'+pl.items.length+')',cat:pl.cat,sub:pl.sub,acc:pl.acc,payee:pl.payee||''},d:it.date,k,amount:it.amount,plan:pl.id});
+ }));
  return out.sort((a,b)=>a.d<b.d?-1:a.d>b.d?1:0);
+}
+function planKeys(){return new Set(S.tx.filter(t=>t.recKey).map(t=>t.recKey).concat(S.skips));}
+function planStats(pl){
+ const have=planKeys();
+ const open=pl.items.filter(it=>!have.has(pl.id+'|'+it.date));
+ return{done:pl.items.length-open.length,total:pl.items.length,rest:open.reduce((a,it)=>a-it.amount,0)};
+}
+function makePlanItems(total,n,start){
+ const cents=Math.round(total*100),baseC=Math.floor(cents/n);
+ const day=parseInt(start.slice(8)),m0=monthOf(start),items=[];
+ for(let i=0;i<n;i++){
+  const m=addMonths(m0,i),[y,mm]=m.split('-').map(Number);
+  const c=i<n-1?baseC:cents-baseC*(n-1);
+  items.push({date:m+'-'+pad(Math.min(day,dim(y,mm))),amount:-c/100});
+ }
+ return items;
 }
 function autoCat(label,amount){
  const n=norm(label);
@@ -200,6 +221,16 @@ function linkRec(tx){
     const diff=Math.abs(Math.round((new Date(tx.date+'T12:00:00')-new Date(d+'T12:00:00'))/86400000));
     if(diff<=7&&!have.has(k)){tx.recKey=k;tx.cat=r.cat;tx.sub=r.sub;return;}
    }
+  }
+ }
+ for(const pl of S.plans){
+  if(pl.acc&&tx.acc&&pl.acc!==tx.acc)continue;
+  const kw=norm(pl.match||pl.label);
+  if(!kw||!n.includes(kw))continue;
+  for(const it of pl.items){
+   const k=pl.id+'|'+it.date;
+   const diff=Math.abs(Math.round((new Date(tx.date+'T12:00:00')-new Date(it.date+'T12:00:00'))/86400000));
+   if(diff<=7&&!have.has(k)){tx.recKey=k;tx.cat=pl.cat;tx.sub=pl.sub;if(pl.payee&&!tx.payee)tx.payee=pl.payee;return;}
   }
  }
 }
@@ -394,6 +425,9 @@ function freqText(r){
  if(r.freq==='weekly')return (r.every||1)===1?'Chaque semaine':'Toutes les '+r.every+' semaines';
  return 'Tous les '+(r.every||1)+' jours';
 }
+function planRowsHTML(){
+ return S.plans.map(pl=>{const st=planStats(pl);return `<div class="row" data-a="editplan" data-id="${esc(pl.id)}"><div class="m"><div class="l">${esc(pl.label)}</div><div class="s">${st.done}/${st.total} réglés${st.rest>0.004?' · reste '+fmt(st.rest):' · soldé'}${S.accounts.length>1?' · '+esc(accName(pl.acc)):''}</div></div></div>`;}).join('')||'<p class="mut">Aucun paiement en plusieurs fois.</p>';
+}
 function recHTML(){
  const due=dueItems(month);
  let h=accBar()+monthNav();
@@ -401,7 +435,7 @@ function recHTML(){
  h+=due.length?due.map(x=>`<div class="row"><div class="d">${x.d.slice(8)}/${x.d.slice(5,7)}</div><div class="m"><div class="l">${esc(x.r.label)}</div><div class="s">${esc(x.r.cat)} › ${esc(x.r.sub)}</div></div><div class="a"><div class="${x.amount<0?'neg':'pos'}">${fmt(x.amount)}</div><div style="margin-top:4px"><button class="primary small" data-a="validate" data-k="${esc(x.k)}">Valider</button> <button class="ghost small" data-a="skip" data-k="${esc(x.k)}">Ignorer</button></div></div></div>`).join(''):'<p class="mut">Rien à valider.</p>';
  h+=`</div><div class="card"><b>Mes récurrences</b>`;
  h+=S.rec.length?S.rec.map(r=>`<div class="row" data-a="editrec" data-id="${esc(r.id)}"><div class="m"><div class="l">${esc(r.label)}</div><div class="s">${esc(freqText(r))} · ${esc(r.cat)} › ${esc(r.sub)}${S.accounts.length>1?' · '+esc(accName(r.acc)):''}</div></div><div class="a ${amountAt(r,today())<0?'neg':'pos'}">${fmt(amountAt(r,today()))}</div></div>`).join(''):'<p class="mut">Aucune récurrence.</p>';
- h+=`</div><button class="primary" style="width:100%" data-a="newrec">Ajouter une récurrence</button>`;
+ h+=`</div><div class="card"><b>Paiements en plusieurs fois</b>${planRowsHTML()}</div><div class="btns"><button class="primary" data-a="newrec">Ajouter une récurrence</button><button class="primary" data-a="newplan">Paiement en plusieurs fois</button></div>`;
  return h;
 }
 function guessCol(header,re){const i=header.findIndex(h=>re.test(h));return i>=0?i:-1;}
@@ -557,6 +591,57 @@ function delAcc(){
  S.accounts=S.accounts.filter(x=>x.id!==a.id);S.shown=S.shown.filter(id=>id!==a.id);
  save();closeModal();render();
 }
+function openPlan(id){
+ const pl=id?S.plans.find(x=>x.id===id):null;
+ const d=pl||{label:'',acc:defAcc(),cat:'Loisirs',sub:'Shopping',payee:'',match:''};
+ const lock=planKeys();
+ txCtx={pid:pl?pl.id:null};
+ const top=`<label>Libellé<input id="pl_lab" value="${esc(d.label)}" placeholder="ex. Canapé"></label>
+ <label>Tiers (commerçant)<input id="pl_pay" list="paylist" autocomplete="off" value="${esc(d.payee||'')}"><datalist id="paylist">${payOpts()}</datalist></label>
+ ${accSelect('pl_acc',d.acc)}
+ <label>Catégorie<select id="pl_cat" data-catsel="pl_sub">${catOptions(d.cat)}</select></label>
+ <label>Sous-catégorie<select id="pl_sub">${subOptions(d.cat,d.sub)}</select></label>
+ <label>Mot-clé pour reconnaître la ligne dans le CSV (facultatif)<input id="pl_match" value="${esc(d.match||'')}"></label>`;
+ const body=pl
+  ?`<b>Échéances</b><p class="s" style="margin-top:2px">Tu peux changer le montant ou la date d'une échéance pas encore réglée, par exemple le dernier paiement.</p>`
+   +pl.items.map((it,i)=>{
+    const k=pl.id+'|'+it.date;
+    if(lock.has(k))return `<div class="row"><div class="m">${S.skips.includes(k)?'ignorée':'✓'} ${frDate(it.date)}</div><div class="a">${fmt(it.amount)}</div></div>`;
+    return `<div class="row" style="gap:6px"><input type="date" id="pi_d${i}" value="${esc(it.date)}" style="flex:1;margin:0"><input id="pi_a${i}" inputmode="decimal" value="${String(Math.abs(it.amount)).replace('.',',')}" style="width:100px;margin:0"></div>`;
+   }).join('')
+  :`<label>Montant total (€)<input id="pl_total" inputmode="decimal"></label>
+ <label>Nombre d'échéances (une par mois)<input id="pl_n" type="number" min="2" max="60" value="3"></label>
+ <label>Date de la 1re échéance<input id="pl_start" type="date" value="${today()}"></label>
+ <p class="s">Montants égaux ; la dernière échéance prend l'éventuel reste d'arrondi. Tu pourras la modifier ensuite.</p>`;
+ openModal(`<h3>${pl?'Paiement en plusieurs fois':'Nouveau paiement en plusieurs fois'}</h3>${top}${body}
+ <div class="btns" style="margin-top:12px"><button class="ghost" data-a="closem">Annuler</button><button class="primary" data-a="saveplan">Enregistrer</button></div>
+ ${pl?'<div style="margin-top:10px"><button class="danger" style="width:100%" data-a="delplan">Supprimer ce paiement</button></div>':''}`);
+}
+function savePlan(){
+ const label=$('pl_lab').value.trim();if(!label){alert('Libellé manquant.');return;}
+ const common={label,payee:$('pl_pay').value.trim(),acc:$('pl_acc')?$('pl_acc').value:defAcc(),cat:$('pl_cat').value,sub:$('pl_sub').value,match:$('pl_match').value.trim()};
+ if(txCtx.pid){
+  const pl=S.plans.find(x=>x.id===txCtx.pid);if(!pl)return;
+  const lock=planKeys();
+  const items=pl.items.map(x=>({date:x.date,amount:x.amount}));
+  for(let i=0;i<items.length;i++){
+   if(lock.has(pl.id+'|'+items[i].date))continue;
+   const dEl=$('pi_d'+i),aEl=$('pi_a'+i);if(!dEl||!aEl)continue;
+   const v=parseAmount(aEl.value);
+   if(!(v>0)||!dEl.value){alert('Échéance '+(i+1)+' : date ou montant invalide.');return;}
+   items[i]={date:dEl.value,amount:-Math.round(v*100)/100};
+  }
+  items.sort((x,y)=>x.date<y.date?-1:x.date>y.date?1:0);
+  Object.assign(pl,common,{items});
+ }else{
+  const total=parseAmount($('pl_total').value),n=parseInt($('pl_n').value),start=$('pl_start').value;
+  if(!(total>0)){alert('Montant total invalide.');return;}
+  if(!(n>=2&&n<=60)){alert("Nombre d'échéances : entre 2 et 60.");return;}
+  if(!start){alert('Date de la première échéance manquante.');return;}
+  S.plans.push(Object.assign({id:uid(),items:makePlanItems(total,n,start)},common));
+ }
+ save();closeModal();render();
+}
 function openRec(id){
  const r=id?S.rec.find(x=>x.id===id):null;
  const d=r||{label:'',amount:-0.01,cat:'Logement',sub:'Loyer / crédit',freq:'monthly',day:1,every:1,start:today(),end:'',match:''};
@@ -678,13 +763,17 @@ function act(a,ds){
  else if(a==='delbulk'){if(sel&&confirm('Supprimer '+sel.size+' ligne(s) ? Action irréversible.')){const px=new Set(S.tx.filter(x=>sel.has(x.id)&&x.xfer).map(x=>x.xfer));S.tx=S.tx.filter(x=>!sel.has(x.id)&&!(x.xfer&&px.has(x.xfer)));sel=null;save();closeModal();render();}}
  else if(a==='edittx')openTx(ds.id);
  else if(a==='newrec')openRec(null);
+ else if(a==='newplan')openPlan(null);
+ else if(a==='editplan')openPlan(ds.id);
+ else if(a==='saveplan')savePlan();
+ else if(a==='delplan'){if(confirm('Supprimer ce paiement en plusieurs fois ? Les échéances déjà enregistrées sont conservées.')){S.plans=S.plans.filter(x=>x.id!==txCtx.pid);save();closeModal();render();}}
  else if(a==='editrec')openRec(ds.id);
  else if(a==='closem')closeModal();
  else if(a==='savetx')saveTx();
  else if(a==='saverec')saveRec();
  else if(a==='deltx'){const t=S.tx.find(x=>x.id===txCtx.id);const isX=!!(t&&t.xfer);if(confirm(isX?'Supprimer ce virement ? Les deux lignes (les deux comptes) seront supprimées.':'Supprimer cette ligne ?')){S.tx=S.tx.filter(x=>isX?x.xfer!==t.xfer:x.id!==txCtx.id);save();closeModal();render();}}
  else if(a==='delrec'){if(confirm('Supprimer cette récurrence ? Les lignes déjà validées sont conservées.')){S.rec=S.rec.filter(x=>x.id!==txCtx.rid);save();closeModal();render();}}
- else if(a==='validate'){const it=dueItems(month).find(x=>x.k===ds.k);if(it)openTx(null,{date:it.d,label:it.r.label,amount:it.amount,cat:it.r.cat,sub:it.r.sub,acc:it.r.acc},it.k);}
+ else if(a==='validate'){const it=dueItems(month).find(x=>x.k===ds.k);if(it)openTx(null,{date:it.d,label:it.r.label,amount:it.amount,cat:it.r.cat,sub:it.r.sub,acc:it.r.acc,payee:it.r.payee||''},it.k);}
  else if(a==='skip'){S.skips.push(ds.k);save();render();}
  else if(a==='export')exportJSON();
  else if(a==='impcancel'){imp=null;render();}
