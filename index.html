@@ -12,39 +12,41 @@
 <link rel="apple-touch-icon" href="icon-180.png">
 <title>Mon Compte</title>
 <style>
-:root{--bg:#f4f6f8;--card:#fff;--tx:#0f172a;--mut:#64748b;--line:#e2e8f0;--pri:#0f766e;--pri2:#ccfbf1;--red:#dc2626;--grn:#15803d;--warn:#d97706}
+:root{--k:1;--bg:#f4f6f8;--card:#fff;--tx:#0f172a;--mut:#64748b;--line:#e2e8f0;--pri:#0f766e;--pri2:#ccfbf1;--red:#dc2626;--grn:#15803d;--warn:#d97706}
 @media(prefers-color-scheme:dark){:root{--bg:#0b1220;--card:#131c2e;--tx:#e5e7eb;--mut:#94a3b8;--line:#1f2a40;--pri:#2dd4bf;--pri2:#0f3d3a;--red:#f87171;--grn:#4ade80;--warn:#fbbf24}}
+@media(min-width:700px){:root{--k:1.2}}
+@media(min-width:1000px){:root{--k:1.4}}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.4 -apple-system,system-ui,sans-serif}
-#app{max-width:640px;margin:0 auto;padding:calc(env(safe-area-inset-top) + 12px) 14px calc(90px + env(safe-area-inset-bottom))}
-h2{margin:6px 0 10px;font-size:22px}
+body{margin:0;background:var(--bg);color:var(--tx);font:calc(16px*var(--k))/1.4 -apple-system,system-ui,sans-serif}
+#app{max-width:calc(640px*var(--k));margin:0 auto;padding:calc(env(safe-area-inset-top) + 12px) 14px calc(90px + env(safe-area-inset-bottom))}
+h2{margin:6px 0 10px;font-size:calc(22px*var(--k))}
 h3{margin:0 0 10px}
 .mut{color:var(--mut)}
-.s{font-size:12px;color:var(--mut)}
+.s{font-size:calc(12px*var(--k));color:var(--mut)}
 .card{background:var(--card);border-radius:14px;padding:14px;margin:0 0 12px;box-shadow:0 1px 2px rgba(0,0,0,.06)}
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
 .grid .card{margin:0}
-.big{font-size:22px;font-weight:700;margin-top:2px}
+.big{font-size:calc(22px*var(--k));font-weight:700;margin-top:2px}
 .neg{color:var(--red)}.pos{color:var(--grn)}
 .warn{border-left:4px solid var(--warn)}
-.pseg{display:flex;gap:6px;margin:4px 0 8px}.pseg button{flex:1;border:1px solid var(--line);background:var(--card);color:var(--tx);border-radius:10px;padding:8px 2px;font-size:14px}.pseg button.on{background:var(--pri);border-color:var(--pri);color:#fff;font-weight:600}
+.pseg{display:flex;gap:6px;margin:4px 0 8px}.pseg button{flex:1;border:1px solid var(--line);background:var(--card);color:var(--tx);border-radius:10px;padding:8px 2px;font-size:calc(14px*var(--k))}.pseg button.on{background:var(--pri);border-color:var(--pri);color:#fff;font-weight:600}
 .mnav b{text-align:center}
 .mnav{display:flex;align-items:center;justify-content:space-between;margin:4px 0 12px}
-.mnav button{border:0;background:var(--card);color:var(--tx);width:44px;height:44px;border-radius:12px;font-size:22px}
+.mnav button{border:0;background:var(--card);color:var(--tx);width:44px;height:44px;border-radius:12px;font-size:calc(22px*var(--k))}
 button,.btn{font:inherit}
 .btn,.primary{display:inline-block;border:0;background:var(--pri);color:#fff;padding:12px 16px;border-radius:12px;font-weight:600;text-align:center}
 @media(prefers-color-scheme:dark){.btn,.primary{color:#04201e}}
 .ghost{border:1px solid var(--line);background:transparent;color:var(--tx);padding:12px 16px;border-radius:12px}
 .danger{border:1px solid var(--red);background:transparent;color:var(--red);padding:12px 16px;border-radius:12px}
-.small{padding:8px 12px;font-size:14px}
+.small{padding:8px 12px;font-size:calc(14px*var(--k))}
 .row{display:flex;gap:10px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line)}
 .row:last-child{border-bottom:0}
-.row .d{width:42px;color:var(--mut);font-size:13px}
+.row .d{width:42px;color:var(--mut);font-size:calc(13px*var(--k))}
 .row .m{flex:1;min-width:0}
 .row .l{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .row .a{text-align:right}
-input,select{font:inherit;font-size:16px;width:100%;padding:11px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--tx);margin:4px 0 10px}
-label{display:block;font-size:13px;color:var(--mut)}
+input,select{font:inherit;font-size:calc(16px*var(--k));width:100%;padding:11px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--tx);margin:4px 0 10px}
+label{display:block;font-size:calc(13px*var(--k));color:var(--mut)}
 .seg{display:flex;gap:8px;margin-bottom:10px}
 .seg label{flex:1;border:1px solid var(--line);border-radius:10px;padding:10px;text-align:center;color:var(--tx)}
 .seg input{width:auto;margin:0 6px 0 0}
@@ -56,23 +58,23 @@ details:last-child{border-bottom:0}
 summary{list-style:none;cursor:pointer}
 summary::-webkit-details-marker{display:none}
 .sr{display:flex;justify-content:space-between;font-weight:600}
-.sub{display:flex;justify-content:space-between;padding:4px 0 0 12px;color:var(--mut);font-size:14px}
-.fab{position:fixed;right:18px;bottom:calc(76px + env(safe-area-inset-bottom));width:56px;height:56px;border-radius:50%;border:0;background:var(--pri);color:#fff;font-size:30px;box-shadow:0 4px 12px rgba(0,0,0,.3)}
-nav{position:fixed;left:0;right:0;bottom:0;display:flex;background:var(--card);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom)}
-nav button{flex:1;border:0;background:none;color:var(--mut);padding:12px 2px;font-size:12px}
+.sub{display:flex;justify-content:space-between;padding:4px 0 0 12px;color:var(--mut);font-size:calc(14px*var(--k))}
+.fab{position:fixed;right:max(18px,calc((100vw - 640px*var(--k))/2 + 18px));bottom:calc(76px + env(safe-area-inset-bottom));width:56px;height:56px;border-radius:50%;border:0;background:var(--pri);color:#fff;font-size:calc(30px*var(--k));box-shadow:0 4px 12px rgba(0,0,0,.3)}
+nav{position:fixed;left:0;right:0;bottom:0;max-width:calc(640px*var(--k));margin:0 auto;display:flex;background:var(--card);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom)}
+nav button{flex:1;border:0;background:none;color:var(--mut);padding:12px 2px;font-size:calc(12px*var(--k))}
 nav button.on{color:var(--pri);font-weight:700}
 #modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:10;align-items:flex-end;justify-content:center}
 #modal.open{display:flex}
-.sheet{background:var(--card);width:100%;max-width:640px;max-height:92vh;overflow:auto;border-radius:18px 18px 0 0;padding:16px 16px calc(20px + env(safe-area-inset-bottom))}
+.sheet{background:var(--card);width:100%;max-width:calc(640px*var(--k));max-height:92vh;overflow:auto;border-radius:18px 18px 0 0;padding:16px 16px calc(20px + env(safe-area-inset-bottom))}
 .btns{display:flex;gap:8px;flex-wrap:wrap}
 .btns>*{flex:1}
-table{width:100%;border-collapse:collapse;font-size:13px}
+table{width:100%;border-collapse:collapse;font-size:calc(13px*var(--k))}
 td,th{padding:4px;border-bottom:1px solid var(--line);text-align:left}
 .chips{display:flex;gap:8px;overflow-x:auto;margin:0 0 12px;padding-bottom:2px}
 .chip{flex:none;border:1px solid var(--line);background:var(--card);color:var(--mut);border-radius:12px;padding:8px 12px;text-align:left}
 .chip.on{border-color:var(--pri);color:var(--tx);box-shadow:inset 0 0 0 1px var(--pri)}
-.chip b{display:block;font-size:14px}
-.chip span{font-size:12px}
+.chip b{display:block;font-size:calc(14px*var(--k))}
+.chip span{font-size:calc(12px*var(--k))}
 </style>
 </head>
 <body>
@@ -334,7 +336,7 @@ function periodLabel(){
 const PERNAME={day:'ce jour',week:'cette semaine',month:'ce mois',year:'cette année'};
 const monthNav=()=>{
  const R=range(),t=today(),here=t>=R.from&&t<=R.to;
- return `<div class="pseg">${[['day','Jour'],['week','Semaine'],['month','Mois'],['year','Année']].map(([k,l])=>`<button data-a="per" data-p="${k}" class="${per===k?'on':''}">${l}</button>`).join('')}</div><div class="mnav"><button data-a="prev">‹</button><div style="text-align:center"><b>${esc(periodLabel())}</b>${here?'':'<div><button class="ghost small" style="width:auto;height:auto;padding:4px 10px;font-size:13px" data-a="gotoday">Aujourd\'hui</button></div>'}</div><button data-a="next">›</button></div>`;
+ return `<div class="pseg">${[['day','Jour'],['week','Semaine'],['month','Mois'],['year','Année']].map(([k,l])=>`<button data-a="per" data-p="${k}" class="${per===k?'on':''}">${l}</button>`).join('')}</div><div class="mnav"><button data-a="prev">‹</button><div style="text-align:center"><b>${esc(periodLabel())}</b>${here?'':'<div><button class="ghost small" style="width:auto;height:auto;padding:4px 10px;font-size:calc(13px*var(--k))" data-a="gotoday">Aujourd\'hui</button></div>'}</div><button data-a="next">›</button></div>`;
 };
 const catOptions=sel=>Object.keys(CATS).map(c=>`<option ${c===sel?'selected':''}>${esc(c)}</option>`).join('');
 const subOptions=(cat,sel)=>(CATS[cat]||[]).map(s=>`<option ${s===sel?'selected':''}>${esc(s)}</option>`).join('');
