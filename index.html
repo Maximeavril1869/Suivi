@@ -731,7 +731,7 @@ function openRec(id){
  ${S.accounts.some(a=>a.type==='emprunt')?`<label>Rembourse l'emprunt (facultatif)<select id="r_loan"><option value="">— aucun —</option>${S.accounts.filter(a=>a.type==='emprunt').map(a=>`<option value="${esc(a.id)}" ${d.loan===a.id?'selected':''}>${esc(a.name)}</option>`).join('')}</select></label>`:''}
  <div class="seg"><label><input type="radio" name="rty" value="dep" ${dep?'checked':''}>Dépense</label><label><input type="radio" name="rty" value="rec" ${dep?'':'checked'}>Recette</label></div>
  <label>Montant habituel (€) — modifiable à chaque validation<input id="r_amt" inputmode="decimal" value="${r?String(Math.abs(curAmt)).replace('.',','):''}"></label>
- ${r?`<div id="r_fromw" style="display:none"><label>Nouveau montant applicable à partir du<input id="r_from" type="date" value="${today()}"></label><p class="s" style="margin-top:-6px">Les échéances et les écritures liées à cette récurrence à partir de cette date prendront le nouveau montant.</p></div>`:''}
+ ${r?`<div id="r_fromw" style="display:none"><label>Nouveau montant applicable à partir du (inclus)<input id="r_from" type="date" value="${today()}"></label><p class="s" id="r_fromtxt" style="margin-top:-6px"></p></div>`:''}
  <label>Catégorie<select id="r_cat" data-catsel="r_sub">${catOptions(d.cat)}</select></label>
  <label>Sous-catégorie<select id="r_sub">${subOptions(d.cat,d.sub)}</select></label>
  <label>Fréquence<select id="r_freq"><option value="monthly" ${d.freq==='monthly'?'selected':''}>Mensuelle</option><option value="weekly" ${d.freq==='weekly'?'selected':''}>Hebdomadaire</option><option value="yearly" ${d.freq==='yearly'?'selected':''}>Annuelle</option><option value="days" ${d.freq==='days'?'selected':''}>Tous les N jours</option></select></label>
@@ -742,6 +742,11 @@ function openRec(id){
  <label>Mot-clé pour reconnaître la ligne dans le CSV (facultatif)<input id="r_match" value="${esc(d.match||'')}" placeholder="ex. EDF"></label>
  <div class="btns"><button class="ghost" data-a="closem">Annuler</button><button class="primary" data-a="saverec">Enregistrer</button></div>
  ${r?'<div style="margin-top:10px"><button class="danger" style="width:100%" data-a="delrec">Supprimer cette récurrence</button></div>':''}`);
+}
+function fromInfo(){
+ const f=$('r_from'),t=$('r_fromtxt');if(!f||!t||!f.value)return;
+ const n=recAffected(txCtx.rid,f.value).length;
+ t.textContent='Toutes les échéances du '+frDate(f.value)+' et suivantes passeront au nouveau montant'+(n?' ('+n+' déjà enregistrée(s) seront modifiées).':'.')+' Celles d\'avant gardent l\'ancien montant.';
 }
 function recAffected(id,from){return S.tx.filter(t=>t.recKey&&t.recKey.indexOf(id+'|')===0&&t.recKey.split('|')[1]>=from);}
 function changeAmount(hist,cur,from,amt){
@@ -868,7 +873,7 @@ function act(a,ds){
  else if(a==='wipe'){if(confirm('Effacer toutes les données ?')&&confirm('Dernière confirmation : action irréversible.')){S=defaultState();save();render();}}
 }
 document.addEventListener('click',e=>{const el=e.target.closest('[data-a]');if(el){if(el.tagName==='LABEL')return;act(el.dataset.a,el.dataset);}});
-document.addEventListener('input',e=>{if(e.target.id==='s'){search=e.target.value;pruneSel();refreshList();}else if(e.target.id==='r_amt'){const w=$('r_fromw');if(w)w.style.display='block';}});
+document.addEventListener('input',e=>{if(e.target.id==='s'){search=e.target.value;pruneSel();refreshList();}else if(e.target.id==='r_amt'){const w=$('r_fromw');if(w)w.style.display='block';fromInfo();}else if(e.target.id==='r_from')fromInfo();});
 document.addEventListener('change',e=>{
  const t=e.target;
  if(t.dataset&&t.dataset.catsel){$(t.dataset.catsel).innerHTML=subOptions(t.value,'');}
