@@ -128,7 +128,7 @@ const frDate=d=>d.slice(8)+'/'+d.slice(5,7)+'/'+d.slice(0,4);
 
 /* ---------- logique ---------- */
 function sortedTx(){return S.tx.map((t,i)=>[t,i]).sort((a,b)=>a[0].date<b[0].date?-1:a[0].date>b[0].date?1:a[1]-b[1]).map(x=>x[0]);}
-const ACC_TYPES={courant:'Compte courant',livret:'Livret',credit:'Carte de crédit',emprunt:'Emprunt'};
+const ACC_TYPES={courant:'Compte courant',livret:'Livret',credit:'Carte de crédit',differe:'Carte bancaire à débit différé',emprunt:'Emprunt'};
 const creditInfo=a=>{const bal=accBalance(a.id,today()),lim=a.limit||0;return{lim,due:Math.max(0,-bal),avail:lim+bal};};
 const accById=id=>S.accounts.find(a=>a.id===id);
 const accName=id=>{const a=accById(id);return a?a.name:'?';};
@@ -194,7 +194,22 @@ function dueItems(m){
   const k=pl.id+'|'+it.date;if(have.has(k))return;
   out.push({r:{id:pl.id,label:pl.label+' ('+(i+1)+'/'+pl.items.length+')',cat:pl.cat,sub:pl.sub,acc:pl.acc,payee:pl.payee||''},d:it.date,k,amount:it.amount,plan:pl.id});
  }));
+ S.accounts.filter(a=>a.type==='differe'&&a.debitAcc&&S.shown.includes(a.id)&&S.shown.includes(a.debitAcc)).forEach(a=>{
+  const dd=debitDates(a);
+  [dd.last,dd.next].forEach(d=>{
+   if(monthOf(d)!==m)return;
+   const k='dif'+a.id+'|'+d;if(have.has(k))return;
+   const owed=Math.max(0,-accBalance(a.id,d));if(owed<0.005)return;
+   out.push({r:{id:'dif'+a.id,label:'Prélèvement '+a.name,cat:'Virement',sub:'Entre comptes',acc:a.debitAcc,payee:'',loan:a.id},d,k,amount:-Math.round(owed*100)/100,noproj:true});
+  });
+ });
  return out.sort((a,b)=>a.d<b.d?-1:a.d>b.d?1:0);
+}
+function debitDates(a){
+ const t=today(),ym=t.slice(0,7);
+ const at=m=>{const [y,mm]=m.split('-').map(Number);return m+'-'+pad(Math.min(a.debitDay||1,dim(y,mm)));};
+ const d0=at(ym);
+ return d0<=t?{last:d0,next:at(addMonths(ym,1))}:{last:at(addMonths(ym,-1)),next:d0};
 }
 function dueRange(f,e){
  const out=[];
@@ -394,9 +409,10 @@ function homeHTML(){
  h+=accBar()+monthNav();
  let proj,projLabel;
  const lastD=R.to.length===10&&per!=='month'?R.to:R.to.slice(0,7)+'-31';
- if(now>=R.from&&now<=R.to){proj=balNow+due.reduce((a,x)=>a+x.amount,0);projLabel='Solde prévu fin '+{day:'de journée',week:'de semaine',month:'de mois',year:'d\'année'}[per];}
+ if(now>=R.from&&now<=R.to){proj=balNow+due.filter(x=>!x.noproj).reduce((a,x)=>a+x.amount,0);projLabel='Solde prévu fin '+{day:'de journée',week:'de semaine',month:'de mois',year:'d\'année'}[per];}
  else{proj=balanceAt(lastD,false);projLabel='Solde fin '+{day:'de journée',week:'de semaine',month:'de mois',year:'d\'année'}[per];}
  h+=`<div class="grid"><div class="card"><div class="s">${S.accounts.length>1?'Solde des comptes cochés':'Solde actuel'}</div><div class="big ${balNow<0?'neg':''}">${fmt(balNow)}</div></div>${Math.abs(rav-balNow)>0.004?`<div class="card"><div class="s">Reste à vivre</div><div class="big ${rav<0?'neg':''}">${fmt(rav)}</div></div>`:''}<div class="card"><div class="s">${projLabel}</div><div class="big ${proj<0?'neg':''}">${fmt(proj)}</div></div><div class="card"><div class="s">Recettes</div><div class="big pos">${fmt(st.inc)}</div></div><div class="card"><div class="s">Dépenses</div><div class="big neg">${fmt(st.exp)}</div></div></div>`;
+ S.accounts.filter(a=>a.type==='differe'&&a.debitAcc).forEach(a=>{const w=Math.max(0,-accBalance(a.id,today())),dd=debitDates(a);h+=`<div class="card"><b>${esc(a.name)}</b><div class="sr" style="margin-top:6px"><span>Achats en attente de prélèvement</span><span class="${w>0?'neg':''}">${fmt(w)}</span></div><div class="s">Prochain prélèvement le ${frDate(dd.next)} sur ${esc(accName(a.debitAcc))}</div></div>`;});
  S.accounts.filter(a=>a.type==='credit').forEach(a=>{const c=creditInfo(a);h+=`<div class="card"><b>${esc(a.name)}</b><div class="sr" style="margin-top:6px"><span>Plafond autorisé</span><span>${fmt(c.lim)}</span></div><div class="sr"><span>Utilisé (à rembourser)</span><span class="${c.due>0?'neg':''}">${fmt(c.due)}</span></div><div class="sr"><span>Crédit disponible</span><span class="${c.avail<0?'neg':'pos'}">${fmt(c.avail)}</span></div><div class="bar"><i class="${c.avail<0?'over':''}" style="width:${c.lim>0?Math.max(0,Math.min(100,c.due/c.lim*100)).toFixed(0):0}%"></i></div></div>`;});
  if(due.length)h+=`<div class="card warn" data-a="nav" data-v="rec"><b>${due.length} échéance(s) à valider (${PERNAME[per]})</b><div class="s">Touche pour les voir</div></div>`;
  const resto=spentRange(R.from,R.to,RK);
@@ -545,7 +561,7 @@ function setHTML(){
  const budOpts=Object.keys(CATS).filter(c=>c!=='Revenus').map(c=>`<option value="${esc(c)}">${esc(c)} (toute la catégorie)</option>`+CATS[c].map(s=>`<option value="${esc(c+'|'+s)}">${esc(c)} › ${esc(s)}</option>`).join('')).join('');
  const buds=Object.keys(S.budgets).map(k=>`<div class="row"><div class="m">${esc(k.replace('|',' › '))}</div><div>${fmt(S.budgets[k])}</div><button class="ghost small" data-a="delbudget" data-key="${esc(k)}">Retirer</button></div>`).join('')||'<p class="mut">Aucun budget.</p>';
  const rules=S.rules.map(r=>`<div class="row"><div class="m"><div class="l">${esc(r.kw)}</div><div class="s">${esc(r.cat)} › ${esc(r.sub)}${r.payee?' · '+esc(r.payee):''}</div></div><button class="ghost small" data-a="delrule" data-kw="${esc(r.kw)}">Retirer</button></div>`).join('')||'<p class="mut">Aucune règle. Elles se créent quand tu corriges une catégorie.</p>';
- const accs=S.accounts.map(a=>`<div class="row" data-a="editacc" data-id="${esc(a.id)}"><div class="m"><div class="l">${esc(a.name)}</div><div class="s">${esc(ACC_TYPES[a.type]||a.type)}${a.cash?'':' · hors reste à vivre'}${a.type==='credit'?(()=>{const c=creditInfo(a);return ' · plafond '+fmt(c.lim)+' · dû '+fmt(c.due)+' · disponible '+fmt(c.avail);})():''}</div></div><div class="a ${accBalance(a.id)<0?'neg':''}">${fmt(accBalance(a.id))}</div></div>`).join('');
+ const accs=S.accounts.map(a=>`<div class="row" data-a="editacc" data-id="${esc(a.id)}"><div class="m"><div class="l">${esc(a.name)}</div><div class="s">${esc(ACC_TYPES[a.type]||a.type)}${a.cash?'':' · hors reste à vivre'}${a.type==='differe'&&a.debitAcc?' · prélevée sur '+esc(accName(a.debitAcc))+' le '+a.debitDay+' · en attente '+fmt(Math.max(0,-accBalance(a.id,today()))):''}${a.type==='credit'?(()=>{const c=creditInfo(a);return ' · plafond '+fmt(c.lim)+' · dû '+fmt(c.due)+' · disponible '+fmt(c.avail);})():''}</div></div><div class="a ${accBalance(a.id)<0?'neg':''}">${fmt(accBalance(a.id))}</div></div>`).join('');
  return `<h2>Réglages</h2>
  <div class="card"><b>Comptes</b><p class="s" style="margin-top:2px">Touche un compte pour le modifier ou caler son solde sur celui de ta banque.</p>${accs}<div style="margin-top:10px"><button class="primary" data-a="newacc">Ajouter un compte</button></div></div>
  <div class="card"><b>Budgets mensuels</b>${buds}<div style="margin-top:10px"><label>Catégorie<select id="b_key">${budOpts}</select></label><label>Plafond par mois (€)<input id="b_amt" inputmode="decimal"></label><button class="primary" data-a="addbudget">Ajouter</button></div></div>
@@ -646,10 +662,11 @@ function openAcc(id){
  openModal(`<h3>${a?'Modifier le compte':'Nouveau compte'}</h3>
  <label>Nom<input id="ac_name" value="${esc(d.name)}" placeholder="ex. Banque 2, PayPal, Livret A"></label>
  <label>Type<select id="ac_type">${Object.keys(ACC_TYPES).map(k=>`<option value="${k}" ${k===d.type?'selected':''}>${ACC_TYPES[k]}</option>`).join('')}</select></label>
+ <div id="ac_difw" style="display:${d.type==='differe'?'block':'none'}"><label>Compte débité chaque mois<select id="ac_dacc">${S.accounts.filter(x=>x.id!==d.id&&x.type!=='differe'&&x.type!=='credit'&&x.type!=='emprunt').map(x=>`<option value="${esc(x.id)}" ${d.debitAcc===x.id?'selected':''}>${esc(x.name)}</option>`).join('')}</select></label><label>Jour du prélèvement (1 à 31)<input id="ac_dday" type="number" min="1" max="31" inputmode="numeric" value="${d.debitDay||''}" placeholder="ex. 28"></label></div>
  <div id="ac_limw" style="display:${d.type==='credit'?'block':'none'}"><label>Plafond de crédit autorisé (€)<input id="ac_lim" inputmode="decimal" value="${d.limit?String(d.limit).replace('.',','):''}" placeholder="ex. 3000"></label></div>
  <label style="display:flex;align-items:center;gap:10px;color:var(--tx)"><input type="checkbox" id="ac_cash" ${d.cash?'checked':''} style="width:22px;height:22px;margin:0;padding:0">Compter dans le reste à vivre</label>
  <label>${a?'Mon solde réel aujourd\'hui (€) — vide = ne pas changer':'Solde actuel (€)'}<span style="display:flex;gap:8px"><input id="ac_bal" inputmode="decimal" placeholder="ex. 1234,56" style="flex:1"><button type="button" class="ghost" data-a="negbal" style="margin-bottom:10px;min-width:56px;font-size:20px" aria-label="Changer le signe (découvert)">±</button></span></label>
- <p class="s" style="margin-top:-6px">Emprunt ou carte de crédit : saisis la somme due en négatif (ex. -150000 ou -300) avec le bouton ±. Elle ne compte pas dans le reste à vivre si la case est décochée.</p>
+ <p class="s" style="margin-top:-6px">Emprunt, carte de crédit ou débit différé : saisis la somme due ou déjà dépensée en attente en négatif (ex. -150000 ou -300) avec le bouton ±. Pour un emprunt ou une carte de crédit, elle ne compte pas dans le reste à vivre si la case est décochée ; pour un débit différé, la case est cochée : les achats en attente réduisent ton reste à vivre.</p>
  <div class="btns"><button class="ghost" data-a="closem">Annuler</button><button class="primary" data-a="saveacc">Enregistrer</button></div>
  ${a?'<div style="margin-top:10px"><button class="danger" style="width:100%" data-a="delacc">Supprimer ce compte</button></div>':''}`);
 }
@@ -662,6 +679,7 @@ function saveAcc(){
  if(!a){a={id:uid(),name,type,cash,opening:0};S.accounts.push(a);S.shown.push(a.id);}
  else{a.name=name;a.type=type;a.cash=cash;}
  if(type==='credit'){const lim=parseAmount($('ac_lim').value);if(isNaN(lim)||lim<0){alert('Indique le plafond de crédit autorisé (ex. 3000).');if(!txCtx.aid){S.accounts=S.accounts.filter(x=>x!==a);S.shown=S.shown.filter(x=>x!==a.id);}return;}a.limit=Math.round(lim*100)/100;}else delete a.limit;
+ if(type==='differe'){const dd=parseInt($('ac_dday').value),da=$('ac_dacc')?$('ac_dacc').value:'';if(!da||!(dd>=1&&dd<=31)){alert('Choisis le compte débité et le jour du prélèvement (1 à 31).');if(!txCtx.aid){S.accounts=S.accounts.filter(x=>x!==a);S.shown=S.shown.filter(x=>x!==a.id);}return;}a.debitAcc=da;a.debitDay=dd;}else{delete a.debitAcc;delete a.debitDay;}
  if(!isNaN(bal))a.opening=Math.round((bal-S.tx.filter(t=>t.acc===a.id&&t.date<=today()).reduce((s,t)=>s+t.amount,0))*100)/100;
  save();closeModal();render();
 }
@@ -901,8 +919,9 @@ document.addEventListener('change',e=>{
  else if(t.id==='funcl'){funcl=t.checked;pruneSel();render();}
  else if(t.id==='r_start'&&$('r_day')&&$('r_freq').value==='monthly'){const dd=parseInt(t.value.slice(8));if(dd)$('r_day').value=dd;}
  else if(t.id==='imp_acc'){imp.acc=t.value;}
- else if(t.id==='ac_type'&&!txCtx.aid){$('ac_cash').checked=(t.value==='courant');}
+ else if(t.id==='ac_type'&&!txCtx.aid){$('ac_cash').checked=(t.value==='courant'||t.value==='differe');}
  if(t.id==='ac_type'&&$('ac_limw'))$('ac_limw').style.display=t.value==='credit'?'block':'none';
+ if(t.id==='ac_type'&&$('ac_difw'))$('ac_difw').style.display=t.value==='differe'?'block':'none';
 });
 
 /* ---------- démarrage ---------- */
