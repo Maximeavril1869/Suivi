@@ -108,11 +108,20 @@ function migrate(raw){
  o.rec.forEach(r=>{if(!r.acc)r.acc=first;});
  if(!Array.isArray(o.shown))o.shown=o.accounts.map(a=>a.id);
  o.shown=o.shown.filter(id=>o.accounts.some(a=>a.id===id));
+ o.accounts.forEach(a=>{
+  if(!a.anchor&&Math.abs(a.opening||0)>=0.005){
+   const t=ymd(new Date());
+   a.anchor={date:t,amount:Math.round(((a.opening||0)+o.tx.filter(x=>x.acc===a.id&&x.date<=t).reduce((s,x)=>s+x.amount,0))*100)/100};
+  }
+ });
  delete o.opening;o.v=2;return o;
 }
 function load(){try{const r=localStorage.getItem(KEY);if(r)return migrate(JSON.parse(r));}catch(e){}return migrate(null);}
 let S=load();
-function save(){try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){alert("Impossible d'enregistrer : stockage plein ou bloqué.");}}
+function reanchor(){
+ S.accounts.forEach(a=>{if(a.anchor)a.opening=Math.round((a.anchor.amount-S.tx.filter(t=>t.acc===a.id&&t.date<=a.anchor.date).reduce((s,t)=>s+t.amount,0))*100)/100;});
+}
+function save(){reanchor();try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){alert("Impossible d'enregistrer : stockage plein ou bloqué.");}}
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 const fmt=n=>new Intl.NumberFormat('fr-FR',{style:'currency',currency:'EUR'}).format(n);
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -139,7 +148,18 @@ function scopeAccs(cashOnly){return S.accounts.filter(a=>S.shown.includes(a.id)&
 function openingSum(cashOnly){return scopeAccs(cashOnly).reduce((s,a)=>s+(a.opening||0),0);}
 function balanceAt(date,cashOnly){const ids=new Set(scopeAccs(cashOnly).map(a=>a.id));return openingSum(cashOnly)+S.tx.filter(t=>ids.has(t.acc)&&t.date<=date).reduce((s,t)=>s+t.amount,0);}
 function accBalance(id,date){const a=accById(id);return ((a&&a.opening)||0)+S.tx.filter(t=>t.acc===id&&(!date||t.date<=date)).reduce((s,t)=>s+t.amount,0);}
-function withBalance(){let b=openingSum(false);return sortedTx().filter(inScope).map(t=>{b+=t.amount;return Object.assign({},t,{bal:b});});}
+function adjRows(){
+ return scopeAccs(false).filter(a=>a.anchor&&Math.abs(a.opening||0)>=0.005).map(a=>{
+  const ds=S.tx.filter(t=>t.acc===a.id).map(t=>t.date).concat([a.anchor.date]);
+  return{id:'adj_'+a.id,virtual:true,date:ds.reduce((m,x)=>x<m?x:m),label:'Ajustement de solde',amount:a.opening,cat:'Ajustement',sub:'Solde initial',payee:'',acc:a.id};
+ });
+}
+function withBalance(){
+ const adj=adjRows(),ids=new Set(adj.map(r=>r.acc));
+ let b=scopeAccs(false).filter(a=>!ids.has(a.id)).reduce((s,a)=>s+(a.opening||0),0);
+ const rows=sortedTx().filter(inScope);
+ return adj.map(r=>[r,-1]).concat(rows.map((t,i)=>[t,i])).sort((x,y)=>x[0].date<y[0].date?-1:x[0].date>y[0].date?1:x[1]-y[1]).map(x=>x[0]).map(t=>{b+=t.amount;return Object.assign({},t,{bal:b});});
+}
 function xferOther(t){return t.xfer?S.tx.find(x=>x.xfer===t.xfer&&x.id!==t.id):null;}
 function createTransfer(from,to,amt,date,label){
  const pid=uid();
@@ -449,6 +469,7 @@ function homeHTML(){
 }
 function payOpts(){return [...new Set(S.tx.map(t=>t.payee).filter(Boolean))].sort().map(p=>`<option value="${esc(p)}">`).join('');}
 function txRow(t){
+ if(t.virtual)return `<div class="row" data-a="editacc" data-id="${esc(t.acc)}"><div class="d">${t.date.slice(8)}/${t.date.slice(5,7)}</div><div class="m"><div class="l">Ajustement de solde</div><div class="s">Solde initial recalculé automatiquement${S.accounts.length>1?' · '+esc(accName(t.acc)):''} · touche pour changer le solde de référence</div></div><div class="a"><div class="${t.amount<0?'neg':'pos'}">${fmt(t.amount)}</div><div class="s">${fmt(t.bal)}</div></div></div>`;
  const chk=sel?`<input type="checkbox" ${sel.has(t.id)?'checked':''} tabindex="-1" style="width:22px;height:22px;margin:0;padding:0;flex:none;pointer-events:none">`:'';
  const o=xferOther(t);
  let base;
@@ -476,8 +497,8 @@ function selCtl(){
 function listHTML(){
  const {items,active}=filteredTx();
  if(!items.length)return '<p class="mut">Aucune ligne.</p>';
- const sum=items.reduce((a,t)=>a+t.amount,0);
- return `<div class="s" style="margin-bottom:6px">${items.length} ligne(s) · total ${fmt(sum)}${active?' · toutes périodes confondues (filtre actif)':''}</div>`+items.map(txRow).join('');
+ const real=items.filter(t=>!t.virtual),sum=real.reduce((a,t)=>a+t.amount,0);
+ return `<div class="s" style="margin-bottom:6px">${real.length} ligne(s) · total ${fmt(sum)}${active?' · toutes périodes confondues (filtre actif)':''}</div>`+items.map(txRow).join('');
 }
 function refreshList(){const l=$('list');if(l)l.innerHTML=listHTML();const c=$('selctl');if(c)c.innerHTML=selCtl();}
 function linesHTML(){
@@ -675,8 +696,9 @@ function openAcc(id){
  <div id="ac_difw" style="display:${d.type==='differe'?'block':'none'}"><label>Compte débité chaque mois<select id="ac_dacc">${S.accounts.filter(x=>x.id!==d.id&&x.type!=='differe'&&x.type!=='credit'&&x.type!=='emprunt').map(x=>`<option value="${esc(x.id)}" ${d.debitAcc===x.id?'selected':''}>${esc(accName(x.id))}</option>`).join('')}</select></label><label>Jour du prélèvement (1 à 31)<input id="ac_dday" type="number" min="1" max="31" inputmode="numeric" value="${d.debitDay||''}" placeholder="ex. 28"></label></div>
  <div id="ac_limw" style="display:${d.type==='credit'?'block':'none'}"><label>Plafond de crédit autorisé (€)<input id="ac_lim" inputmode="decimal" value="${d.limit?String(d.limit).replace('.',','):''}" placeholder="ex. 3000"></label></div>
  <label style="display:flex;align-items:center;gap:10px;color:var(--tx)"><input type="checkbox" id="ac_cash" ${d.cash?'checked':''} style="width:22px;height:22px;margin:0;padding:0">Compter dans le reste à vivre</label>
- <label>${a?'Mon solde réel aujourd\'hui (€) — vide = ne pas changer':'Solde actuel (€)'}<span style="display:flex;gap:8px"><input id="ac_bal" inputmode="decimal" placeholder="ex. 1234,56" style="flex:1"><button type="button" class="ghost" data-a="negbal" style="margin-bottom:10px;min-width:56px;font-size:20px" aria-label="Changer le signe (découvert)">±</button></span></label>
- <p class="s" style="margin-top:-6px">Emprunt, carte de crédit ou débit différé : saisis la somme due ou déjà dépensée en attente en négatif (ex. -150000 ou -300) avec le bouton ±. Pour un emprunt ou une carte de crédit, elle ne compte pas dans le reste à vivre si la case est décochée ; pour un débit différé, la case est cochée : les achats en attente réduisent ton reste à vivre.</p>
+ <label>Date du solde de référence<input id="ac_bdate" type="date" value="${esc(d.anchor?d.anchor.date:today())}"></label>
+ <label>Solde à cette date (€)${a&&!d.anchor?' — vide = ne pas changer':''}<span style="display:flex;gap:8px"><input id="ac_bal" inputmode="decimal" placeholder="ex. 1234,56" value="${d.anchor?String(d.anchor.amount).replace('.',','):''}" style="flex:1"><button type="button" class="ghost" data-a="negbal" style="margin-bottom:10px;min-width:56px;font-size:20px" aria-label="Changer le signe (découvert)">±</button></span></label>
+ <p class="s" style="margin-top:-6px">Ce solde est un repère fixe : si tu ajoutes ensuite des écritures plus anciennes, l'app recalcule seule une ligne « Ajustement de solde » pour que ce solde reste juste à cette date. Tu peux changer le montant et la date à tout moment (rapprochement bancaire).<br>Emprunt, carte de crédit ou débit différé : saisis la somme due ou déjà dépensée en attente en négatif (ex. -150000 ou -300) avec le bouton ±. Pour un emprunt ou une carte de crédit, elle ne compte pas dans le reste à vivre si la case est décochée ; pour un débit différé, la case est cochée : les achats en attente réduisent ton reste à vivre.</p>
  <div class="btns"><button class="ghost" data-a="closem">Annuler</button><button class="primary" data-a="saveacc">Enregistrer</button></div>
  ${a?'<div style="margin-top:10px"><button class="danger" style="width:100%" data-a="delacc">Supprimer ce compte</button></div>':''}`);
 }
@@ -691,7 +713,7 @@ function saveAcc(){
  a.group=$('ac_group').value.trim();
  if(type==='credit'){const lim=parseAmount($('ac_lim').value);if(isNaN(lim)||lim<0){alert('Indique le plafond de crédit autorisé (ex. 3000).');if(!txCtx.aid){S.accounts=S.accounts.filter(x=>x!==a);S.shown=S.shown.filter(x=>x!==a.id);}return;}a.limit=Math.round(lim*100)/100;}else delete a.limit;
  if(type==='differe'){const dd=parseInt($('ac_dday').value),da=$('ac_dacc')?$('ac_dacc').value:'';if(!da||!(dd>=1&&dd<=31)){alert('Choisis le compte débité et le jour du prélèvement (1 à 31).');if(!txCtx.aid){S.accounts=S.accounts.filter(x=>x!==a);S.shown=S.shown.filter(x=>x!==a.id);}return;}a.debitAcc=da;a.debitDay=dd;}else{delete a.debitAcc;delete a.debitDay;}
- if(!isNaN(bal))a.opening=Math.round((bal-S.tx.filter(t=>t.acc===a.id&&t.date<=today()).reduce((s,t)=>s+t.amount,0))*100)/100;
+ if(!isNaN(bal)){const bd=$('ac_bdate').value||today();a.anchor={date:bd,amount:Math.round(bal*100)/100};}
  save();closeModal();render();
 }
 function delAcc(){
@@ -881,7 +903,7 @@ function act(a,ds){
  else if(a==='selstart'){sel=new Set();render();}
  else if(a==='selend'){sel=null;render();}
  else if(a==='togsel'){if(sel){if(sel.has(ds.id))sel.delete(ds.id);else sel.add(ds.id);refreshList();}}
- else if(a==='selall'){if(sel){const ids=filteredTx().items.map(t=>t.id);if(ids.length&&ids.every(id=>sel.has(id)))sel=new Set();else sel=new Set(ids);refreshList();}}
+ else if(a==='selall'){if(sel){const ids=filteredTx().items.filter(t=>!t.virtual).map(t=>t.id);if(ids.length&&ids.every(id=>sel.has(id)))sel=new Set();else sel=new Set(ids);refreshList();}}
  else if(a==='bulk')openBulk();
  else if(a==='applybulk')applyBulk();
  else if(a==='delbulk'){if(sel&&confirm('Supprimer '+sel.size+' ligne(s) ? Action irréversible.')){const px=new Set(S.tx.filter(x=>sel.has(x.id)&&x.xfer).map(x=>x.xfer));S.tx=S.tx.filter(x=>!sel.has(x.id)&&!(x.xfer&&px.has(x.xfer)));sel=null;save();closeModal();render();}}
