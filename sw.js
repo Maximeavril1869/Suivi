@@ -1,4 +1,4 @@
-const V = 'compte-v17';
+const V = 'compte-v18';
 const FILES = ['./', 'index.html', 'manifest.json', 'icon-180.png', 'icon-512.png'];
 
 self.addEventListener('install', e => {
@@ -15,7 +15,7 @@ self.addEventListener('activate', e => {
 
 // Réseau d'abord (pour recevoir les mises à jour), cache en secours (hors ligne)
 self.addEventListener('fetch', e => {
-  if (e.request.method !== 'GET') return;
+  if (e.request.method !== 'GET' || new URL(e.request.url).origin !== self.location.origin) return;   // jamais d'appels au compte (synchronisation) dans le cache
   e.respondWith(
     fetch(e.request)
       .then(res => {

@@ -1,6 +1,6 @@
 # Suivi
 
-Application de suivi de compte salaire (« Mon Compte »), 100 % locale, installable sur iPhone (PWA).
+Application de suivi de compte salaire (« Mon Compte »), locale d'abord, installable sur iPhone (PWA), avec synchronisation chiffrée facultative entre appareils.
 
 ## Documentation
 

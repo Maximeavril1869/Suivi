@@ -3,13 +3,29 @@
 Journal des opérations réalisées sur le projet, à relire pour savoir où il en est.
 Les entrées les plus récentes sont en haut. À chaque intervention, ajouter une entrée datée.
 
-## État actuel (2026-11-03)
+## État actuel (2026-11-11)
+
+- App PWA locale d'abord (un seul fichier `index.html`), publiée sur GitHub Pages, utilisée sur iPhone. **Synchronisation chiffrée** ajoutée le 2026-11-11 (à valider sur iPhone et iPad). Service worker en version `compte-v18`.
+- Plan en 3 étapes entièrement présent dans le code : comptes multiples + virements, paiements en plusieurs fois, emprunts / livrets / cartes.
+- Reste à faire : tester l'import CSV avec l'export réel de la banque (point en attente depuis la première version) ; valider la synchronisation sur appareil.
+- Aucune donnée réelle n'est stockée dans le dépôt.
+
+## État au 2026-11-03 (avant la synchronisation)
 
 - App PWA 100 % locale (un seul fichier `index.html`), publiée sur GitHub Pages, utilisée sur iPhone.
 - Plan en 3 étapes entièrement présent dans le code : comptes multiples + virements, paiements en plusieurs fois, emprunts / livrets / cartes.
 - Service worker en version `compte-v17`.
 - Reste à faire : tester l'import CSV avec l'export réel de la banque (point en attente depuis la première version).
 - Aucune donnée réelle n'est stockée dans le dépôt.
+
+## 2026-11-11 — Synchronisation chiffrée entre appareils
+
+- Demande : retrouver les mêmes comptes sur iPhone et iPad, comme pour Plan du jour. Décisions de l'utilisateur : même projet Supabase et même compte que Plan du jour, **chiffrement oui**, le Honor ne servira que pour les jeux, données de test à vider avant usage réel, volume inconnu (l'app est donc découpée par mois).
+- Fait : section « synchronisation chiffrée » dans `index.html` (connexion, phrase secrète, AES-GCM, découpage `meta` / `tx:AAAA-MM`, envoi 1,5 s après un enregistrement, relève toutes les 5 s, conflits, suppressions) ; carte Réglages › Synchronisation ; `save()` déclenche l'envoi. Service worker : requêtes vers d'autres adresses ignorées, version `compte-v18`.
+- Le même projet Supabase et la même table que Plan du jour : rien à créer côté Supabase (colonne `app = 'suivi'`).
+- Tests : `tests/test_sync.py` (57 vérifications, faux serveur sans déchiffrement : rien de lisible reçu, échange de lignes refusé, deux appareils, hors ligne, jeton expiré, saisie en cours, déconnexion).
+- Non testé en conditions réelles : le vrai service Supabase (non joignable depuis l'espace de travail de Claude). À valider sur appareil : connexion et création de la phrase sur l'iPhone, saisie de la phrase sur l'iPad, ligne ajoutée d'un côté qui apparaît de l'autre.
+- Points de vigilance : la phrase secrète n'est récupérable nulle part ; le palier gratuit Supabase n'a pas de sauvegardes automatiques (garder l'export JSON) ; projet gratuit mis en pause après une semaine d'inactivité.
 
 ## 2026-11-03 — Reprise du projet
 

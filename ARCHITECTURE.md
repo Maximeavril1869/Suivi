@@ -1,6 +1,6 @@
 # Architecture — Mon Compte
 
-Application de suivi de budget **100 % locale** : une PWA sans serveur, sans framework, sans dépendance. Tout le code applicatif tient dans `index.html` (HTML + CSS + JavaScript).
+Application de suivi de budget **locale d'abord** : une PWA sans framework et sans dépendance. Tout le code applicatif tient dans `index.html` (HTML + CSS + JavaScript). Les données restent dans le `localStorage` de l'appareil ; depuis la synchronisation (voir plus bas), une copie **chiffrée** peut être envoyée à un compte personnel pour retrouver les mêmes comptes sur plusieurs appareils.
 
 ## Fichiers du dépôt
 
@@ -11,6 +11,7 @@ Application de suivi de budget **100 % locale** : une PWA sans serveur, sans fra
 | `sw.js` | Service worker : réseau d'abord, cache en secours pour le hors ligne |
 | `icon-180.png`, `icon-512.png` | Icônes de l'app (iPhone et maskable) |
 | `LICENSE`, `README.md` | Mention « Tous droits réservés » |
+| `tests/test_sync.py` | Tests de la synchronisation (faux serveur, deux appareils simulés) ; voir `tests/README.md` |
 | `JOURNAL.md` | Carnet de bord du projet |
 | `ARCHITECTURE.md` | Ce document |
 
@@ -32,7 +33,7 @@ Principe : une seule variable d'état `S`, modifiée par les actions, enregistr�
 
 ## Stockage et données
 
-- Stockage : `localStorage`, clé `compte-salaire-v1`. Rien n'est envoyé sur le réseau.
+- Stockage : `localStorage`, clé `compte-salaire-v1`. Sans connexion à un compte, rien n'est envoyé sur le réseau.
 - Sauvegarde manuelle : export JSON (feuille de partage iOS) et restauration depuis un fichier. L'app rappelle de sauvegarder après 30 jours.
 - `migrate()` met à niveau les anciennes données à chaque chargement (version de schéma `v:2`).
 
@@ -87,3 +88,34 @@ Cycle d'une échéance : la récurrence génère une échéance « à valider »
 - Hébergement : GitHub Pages à partir du dépôt (branche par défaut `main`).
 - Le service worker (`sw.js`) a une version de cache (constante `V`, actuellement `compte-v17`). **À chaque modification publiée, incrémenter cette version** pour que l'iPhone récupère la nouvelle app.
 - Aucune étape de build : modifier `index.html`, commiter, pousser.
+
+## Synchronisation chiffrée
+
+**Principe.** Local d'abord : le `localStorage` reste la référence et l'app marche hors ligne. Connecté (Réglages › Synchronisation), l'app envoie une copie **chiffrée dans le navigateur** vers Supabase (projet `plan-du-jour`, table `donnees`, colonne `app = 'suivi'`) et relit les changements toutes les 5 secondes. Aucune bibliothèque : `fetch` et WebCrypto.
+
+```mermaid
+flowchart LR
+  A[Appareil A<br/>localStorage] -->|chiffre AES-GCM<br/>puis envoie| T[(table donnees<br/>valeurs illisibles)]
+  T -->|relève toutes les 5 s| B[Appareil B<br/>déchiffre et applique]
+  B -->|chiffre et envoie| T
+  P[Phrase secrète<br/>jamais envoyée] -.dérive la clé PBKDF2.-> A
+  P -.-> B
+```
+
+| Élément | Détail |
+|---|---|
+| Compte | Même utilisateur Supabase que Plan du jour (un seul projet pour les apps perso), inscriptions fermées. Mot de passe du compte ≠ phrase secrète |
+| Découpage | `meta` (comptes, récurrences, plans, règles, budgets, correspondances CSV, échéances ignorées) et `tx:AAAA-MM` (les lignes d'un mois) : seul ce qui change est envoyé ou relu |
+| Local à l'appareil | `shown` (comptes cochés) et `lastExport` ne sont pas synchronisés |
+| Chiffrement | AES-GCM 256, clé dérivée de la phrase par PBKDF2-SHA-256 (600 000 itérations, sel public dans la ligne `sel`). Le nom de la ligne est authentifié : le serveur ne peut pas échanger deux lignes. Ligne `verif` : témoin qui valide la phrase |
+| Clé sur l'appareil | La clé dérivée est gardée dans le `localStorage` (`compte-sync-cle`) pour ne demander la phrase qu'une fois ; les données y sont déjà en clair, donc aucun risque de plus. Se déconnecter l'efface |
+| Ce que voit le serveur | L'e-mail du compte, les noms de ligne (`tx:AAAA-MM` : quels mois ont de l'activité), la taille et la date des envois. Aucun libellé, montant, nom de compte |
+| Conflits | Jamais de modification simultanée voulue : la version de l'appareil est envoyée ; ce qui est écrasé est gardé dans `compte-sync-conflits` (5 copies). Première synchro d'un appareil : le serveur l'emporte, la version locale est gardée |
+| Suppression | Un mois vidé ici l'est partout. « Restaurer » et « Tout effacer » s'appliquent aussi aux autres appareils connectés |
+| Saisie en cours | Rien n'est appliqué tant qu'une fenêtre de saisie est ouverte ; l'écran se rafraîchit quand aucun champ n'est actif |
+| Perte de la phrase | Les données en ligne sont irrécupérables ; celles de l'appareil et l'export JSON restent valables |
+| Sauvegarde | La synchronisation n'est **pas** une sauvegarde (le palier gratuit n'a pas de sauvegardes automatiques) : l'export JSON reste indispensable |
+
+Clés de stockage propres à l'appareil, jamais exportées : `compte-sync-session` (jetons), `compte-sync-meta` (curseur et empreintes), `compte-sync-cle`, `compte-sync-conflits`.
+Le service worker ignore désormais les requêtes vers d'autres adresses (aucun appel au compte dans le cache).
+

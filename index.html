@@ -122,7 +122,7 @@ let S=load();
 function reanchor(){
  S.accounts.forEach(a=>{if(a.anchor){a.adj=Math.round((a.anchor.amount-S.tx.filter(t=>t.acc===a.id&&t.date<=a.anchor.date).reduce((s,t)=>s+t.amount,0))*100)/100;a.opening=0;}});
 }
-function save(){reanchor();try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){alert("Impossible d'enregistrer : stockage plein ou bloqué.");}}
+function save(){reanchor();try{localStorage.setItem(KEY,JSON.stringify(S));syncTouch();}catch(e){alert("Impossible d'enregistrer : stockage plein ou bloqué.");}}
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 const fmt=n=>new Intl.NumberFormat('fr-FR',{style:'currency',currency:'EUR'}).format(n);
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -593,6 +593,7 @@ const grp=[];S.accounts.forEach(a=>{const g=a.group||'';let e=grp.find(x=>x.g===
  <div class="card"><b>Comptes</b><p class="s" style="margin-top:2px">Touche un compte pour le modifier ou caler son solde sur celui de ta banque.</p>${accs}<div style="margin-top:10px"><button class="primary" data-a="newacc">Ajouter un compte</button></div></div>
  <div class="card"><b>Budgets mensuels</b>${buds}<div style="margin-top:10px"><label>Catégorie<select id="b_key">${budOpts}</select></label><label>Plafond par mois (€)<input id="b_amt" inputmode="decimal"></label><button class="primary" data-a="addbudget">Ajouter</button></div></div>
  <div class="card"><b>Règles de classement automatique</b>${rules}</div>
+ <div class="card"><b>Synchronisation</b><div id="sync-box">${syncBoxHTML()}</div></div>
  <div class="card"><b>Sauvegarde</b><p class="s">${S.lastExport?'Dernière sauvegarde : '+frDate(S.lastExport):'Aucune sauvegarde faite.'} Stockage persistant : ${persisted===true?'oui':persisted===false?'non accordé':'inconnu'}.</p>
  <div class="btns"><button class="primary" data-a="export">Exporter (JSON)</button><label class="ghost" style="text-align:center">Restaurer<input type="file" id="jsonfile" accept=".json,application/json" hidden></label></div></div>
  <div class="card"><b>Zone dangereuse</b><p class="s">Efface toutes les données de l'app sur ce téléphone.</p><button class="danger" data-a="wipe">Tout effacer</button></div>`;
@@ -880,6 +881,7 @@ function onFile(text){
  imp={header,data,sig,map,acc:(map.acc&&accById(map.acc))?map.acc:defAcc()};render();
 }
 function act(a,ds){
+ if(a.indexOf('sync-')===0){syncAct(a);return;}
  if(a==='nav'){sel=null;view=ds.v;window.scrollTo(0,0);render();}
  else if(a==='prev'){shiftPeriod(-1);pruneSel();render();}
  else if(a==='next'){shiftPeriod(1);pruneSel();render();}
@@ -954,11 +956,354 @@ document.addEventListener('change',e=>{
  if(t.id==='ac_type'&&$('ac_difw'))$('ac_difw').style.display=t.value==='differe'?'block':'none';
 });
 
+/* ---------- synchronisation chiffrée (ARCHITECTURE.md, « Synchronisation ») ----------
+   Local d'abord : le localStorage reste la référence, l'app marche sans réseau. Connecté, une copie CHIFFRÉE (AES-GCM, clé dérivée d'une phrase secrète
+   que le serveur ne voit jamais) est envoyée à Supabase (table `donnees`, app = « suivi ») et relue toutes les 5 s. Aucune bibliothèque : fetch + WebCrypto.
+   Clés : « meta » (comptes, récurrences, plans, règles, budgets, correspondances CSV, échéances ignorées) et « tx:AAAA-MM » (les lignes d'un mois).
+   Restent locaux à l'appareil : `shown` (comptes cochés) et `lastExport`. Lignes en clair : « sel » (sel public) ; « verif » (témoin chiffré de la phrase). */
+const SYNC_URL='https://zoyrclsppuhgnyzgodjv.supabase.co';
+const SYNC_KEY='sb_publishable_rHeMIa4CSjCjZXpAI-0tTQ_QC1O06Ng';   // clé publique : la protection vient des règles d'accès de la table
+const SYNC_APP='suivi';
+const SYNC_SESSION_KEY='compte-sync-session',SYNC_META_KEY='compte-sync-meta',SYNC_CLE_KEY='compte-sync-cle',SYNC_LOST_KEY='compte-sync-conflits';
+const SYNC_POLL_MS=5000,SYNC_PBKDF2=600000,SYNC_MIN_PHRASE=12;
+const SYNC_META_FIELDS=['v','accounts','rec','plans','rules','budgets','csvMaps','skips'];
+let syncSession=null,syncKey=null,syncKeyMode=null,syncMeta={since:null,synced:{},done:false};
+let syncState={status:'start',last:null,msg:''},syncBusy=false,syncAgain=false,syncTimer=null,syncRefreshing=null,syncUiPending=false,syncCache={raw:undefined,out:null},syncMetaText='';
+const SYNC_ENC=new TextEncoder(),SYNC_DEC=new TextDecoder();
+
+function cyrb53(str){let h1=0xdeadbeef,h2=0x41c6ce57;for(let i=0;i<str.length;i++){const ch=str.charCodeAt(i);h1=Math.imul(h1^ch,2654435761);h2=Math.imul(h2^ch,1597334677);}
+ h1=Math.imul(h1^(h1>>>16),2246822507)^Math.imul(h2^(h2>>>13),3266489909);h2=Math.imul(h2^(h2>>>16),2246822507)^Math.imul(h1^(h1>>>13),3266489909);return 4294967296*(2097151&h2)+(h1>>>0);}
+function canon(v){if(Array.isArray(v))return '['+v.map(canon).join(',')+']';if(v&&typeof v==='object')return '{'+Object.keys(v).sort().map(k=>JSON.stringify(k)+':'+canon(v[k])).join(',')+'}';return JSON.stringify(v===undefined?null:v);}
+const hashOf=v=>cyrb53(canon(v));
+function syncErr(code,message,status){const e=new Error(message||code);e.code=code;if(status)e.status=status;return e;}
+async function syncHttpError(res){let m='';try{const j=await res.json();m=j.message||j.msg||j.error_description||'';}catch(e){}return syncErr('http','HTTP '+res.status+(m?' : '+m:''),res.status);}
+
+/* ----- chiffrement ----- */
+function b64enc(buf){const a=new Uint8Array(buf);let s='';for(let i=0;i<a.length;i+=8192)s+=String.fromCharCode.apply(null,a.subarray(i,i+8192));return btoa(s);}
+function b64dec(t){const s=atob(t),a=new Uint8Array(s.length);for(let i=0;i<s.length;i++)a[i]=s.charCodeAt(i);return a;}
+async function syncDerive(pass,saltB64){
+ const base=await crypto.subtle.importKey('raw',SYNC_ENC.encode(pass.normalize('NFKC')),'PBKDF2',false,['deriveKey']);
+ return crypto.subtle.deriveKey({name:'PBKDF2',salt:b64dec(saltB64),iterations:SYNC_PBKDF2,hash:'SHA-256'},base,{name:'AES-GCM',length:256},true,['encrypt','decrypt']);
+}
+async function syncEncrypt(cle,obj){   // le nom de la ligne est authentifié : le serveur ne peut pas échanger deux lignes sans que le déchiffrement échoue
+ const iv=crypto.getRandomValues(new Uint8Array(12));
+ const ct=await crypto.subtle.encrypt({name:'AES-GCM',iv:iv,additionalData:SYNC_ENC.encode(cle)},syncKey,SYNC_ENC.encode(JSON.stringify(obj)));
+ return {iv:b64enc(iv),c:b64enc(ct)};
+}
+async function syncDecrypt(cle,env,key){
+ if(!env||typeof env.iv!=='string'||typeof env.c!=='string')throw syncErr('crypto','valeur illisible');
+ try{const pt=await crypto.subtle.decrypt({name:'AES-GCM',iv:b64dec(env.iv),additionalData:SYNC_ENC.encode(cle)},key||syncKey,b64dec(env.c));return JSON.parse(SYNC_DEC.decode(pt));}
+ catch(e){throw syncErr('crypto','déchiffrement impossible (phrase secrète différente ?)');}
+}
+async function syncStoreKey(key){syncKey=key;try{localStorage.setItem(SYNC_CLE_KEY,b64enc(await crypto.subtle.exportKey('raw',key)));}catch(e){}}
+async function syncLoadKey(){
+ syncKey=null;
+ try{const t=localStorage.getItem(SYNC_CLE_KEY);if(t)syncKey=await crypto.subtle.importKey('raw',b64dec(t),{name:'AES-GCM',length:256},true,['encrypt','decrypt']);}catch(e){syncKey=null;}
+}
+
+/* ----- session et état propre à l'appareil ----- */
+function syncLoad(){
+ syncSession=null;syncMeta={since:null,synced:{},done:false};
+ try{const s=JSON.parse(localStorage.getItem(SYNC_SESSION_KEY));if(s&&typeof s.at==='string'&&typeof s.rt==='string')syncSession={at:s.at,rt:s.rt,exp:Number(s.exp)||0,uid:typeof s.uid==='string'?s.uid:'',email:typeof s.email==='string'?s.email:''};}catch(e){}
+ try{const m=JSON.parse(localStorage.getItem(SYNC_META_KEY));if(m&&typeof m==='object')syncMeta={since:typeof m.since==='string'?m.since:null,synced:m.synced&&typeof m.synced==='object'?m.synced:{},done:m.done===true};}catch(e){}
+}
+function syncSessionSave(){try{if(syncSession)localStorage.setItem(SYNC_SESSION_KEY,JSON.stringify(syncSession));else localStorage.removeItem(SYNC_SESSION_KEY);}catch(e){}}
+function syncMetaSave(){try{const t=JSON.stringify(syncMeta);if(t!==syncMetaText){localStorage.setItem(SYNC_META_KEY,t);syncMetaText=t;}}catch(e){}}
+function syncClearSession(){
+ syncSession=null;syncKey=null;syncKeyMode=null;syncMeta={since:null,synced:{},done:false};syncMetaText='';syncCache={raw:undefined,out:null};
+ try{[SYNC_SESSION_KEY,SYNC_META_KEY,SYNC_CLE_KEY].forEach(k=>localStorage.removeItem(k));}catch(e){}
+}
+function syncStoreSession(j,prev){
+ syncSession={at:j.access_token,rt:j.refresh_token,exp:Date.now()+(Number(j.expires_in)||3600)*1000,uid:(j.user&&j.user.id)||(prev&&prev.uid)||'',email:(j.user&&j.user.email)||(prev&&prev.email)||''};
+ syncSessionSave();
+}
+function syncKeepLost(cle,who,valeur){   // filet de sécurité : ce qui perd un conflit est gardé (5 dernières copies)
+ try{let l=[];try{l=JSON.parse(localStorage.getItem(SYNC_LOST_KEY))||[];}catch(e){l=[];}l.push({cle:cle,quand:new Date().toISOString(),perdant:who,valeur:valeur});localStorage.setItem(SYNC_LOST_KEY,JSON.stringify(l.slice(-5)));}catch(e){}
+}
+
+/* ----- réseau ----- */
+async function syncLogin(email,password){
+ const res=await fetch(SYNC_URL+'/auth/v1/token?grant_type=password',{method:'POST',headers:{apikey:SYNC_KEY,'Content-Type':'application/json'},body:JSON.stringify({email:email,password:password})});
+ if(res.status===400||res.status===401||res.status===422)throw syncErr('bad','identifiants refusés',res.status);
+ if(!res.ok)throw await syncHttpError(res);
+ const j=await res.json();
+ if(!j||typeof j.access_token!=='string'||typeof j.refresh_token!=='string')throw syncErr('http','réponse inattendue');
+ syncKey=null;syncKeyMode=null;syncMeta={since:null,synced:{},done:false};syncMetaText='';syncCache={raw:undefined,out:null};
+ try{localStorage.removeItem(SYNC_CLE_KEY);}catch(e){}
+ syncStoreSession(j,null);syncMetaSave();
+}
+function syncRefresh(){
+ if(!syncSession)return Promise.reject(syncErr('auth','non connecté'));
+ if(syncRefreshing)return syncRefreshing;
+ const prev=syncSession;
+ syncRefreshing=(async()=>{
+  const res=await fetch(SYNC_URL+'/auth/v1/token?grant_type=refresh_token',{method:'POST',headers:{apikey:SYNC_KEY,'Content-Type':'application/json'},body:JSON.stringify({refresh_token:prev.rt})});
+  if(res.status===400||res.status===401||res.status===403){syncClearSession();throw syncErr('auth','session expirée',res.status);}
+  if(!res.ok)throw await syncHttpError(res);
+  syncStoreSession(await res.json(),prev);
+ })();
+ const done=()=>{syncRefreshing=null;};syncRefreshing.then(done,done);
+ return syncRefreshing;
+}
+async function syncFetch(path,opts,retried){
+ if(!syncSession)throw syncErr('auth','non connecté');
+ if(Date.now()>syncSession.exp-60000)await syncRefresh();
+ const headers=Object.assign({apikey:SYNC_KEY,'Content-Type':'application/json',Authorization:'Bearer '+syncSession.at},(opts&&opts.headers)||{});
+ const res=await fetch(SYNC_URL+path,{method:(opts&&opts.method)||'GET',headers:headers,body:opts&&opts.body});
+ if(res.status===401){
+  if(retried){syncClearSession();throw syncErr('auth','session expirée',401);}
+  await syncRefresh();return syncFetch(path,opts,true);
+ }
+ return res;
+}
+async function syncGetRow(cle){
+ const res=await syncFetch('/rest/v1/donnees?select=cle,valeur&app=eq.'+SYNC_APP+'&cle=eq.'+encodeURIComponent(cle),{});
+ if(!res.ok)throw await syncHttpError(res);
+ const rows=await res.json();
+ return Array.isArray(rows)&&rows[0]?rows[0]:null;
+}
+async function syncPostRows(rows,ignoreDup){
+ const body=JSON.stringify(rows.map(r=>{const o={app:SYNC_APP,cle:r.cle,valeur:r.valeur};if(syncSession.uid)o.user_id=syncSession.uid;return o;}));
+ const res=await syncFetch('/rest/v1/donnees?on_conflict=user_id,app,cle',{method:'POST',headers:{Prefer:(ignoreDup?'resolution=ignore-duplicates':'resolution=merge-duplicates')+',return=minimal'},body:body});
+ if(!res.ok)throw await syncHttpError(res);
+}
+
+/* ----- phrase secrète ----- */
+async function syncCheckSel(){   // une phrase existe-t-elle déjà côté serveur ? détermine l'écran à afficher
+ const sel=await syncGetRow('sel');
+ syncKeyMode=sel?'enter':'new';
+}
+async function syncSetPass(pass,pass2){
+ if(syncKeyMode==='new'){
+  if(pass.length<SYNC_MIN_PHRASE)throw syncErr('short','La phrase secrète doit faire au moins '+SYNC_MIN_PHRASE+' caractères.');
+  if(pass!==pass2)throw syncErr('short','Les deux phrases ne sont pas identiques.');
+ }
+ let sel=await syncGetRow('sel');
+ if(!sel){
+  await syncPostRows([{cle:'sel',valeur:{salt:b64enc(crypto.getRandomValues(new Uint8Array(16)))}}],true);
+  sel=await syncGetRow('sel');            // si un autre appareil l'a créé entre-temps, c'est lui qui fait foi
+ }
+ if(!sel||!sel.valeur||typeof sel.valeur.salt!=='string')throw syncErr('http','sel illisible côté serveur');
+ const key=await syncDerive(pass,sel.valeur.salt);
+ let ver=await syncGetRow('verif');
+ if(!ver){
+  syncKey=key;
+  await syncPostRows([{cle:'verif',valeur:await syncEncrypt('verif',{ok:1})}],true);
+  syncKey=null;
+  ver=await syncGetRow('verif');
+ }
+ let ok=false;
+ try{const v=await syncDecrypt('verif',ver&&ver.valeur,key);ok=!!v&&v.ok===1;}catch(e){ok=false;}
+ if(!ok)throw syncErr('badpass','Phrase secrète incorrecte.');
+ await syncStoreKey(key);
+ syncKeyMode=null;
+ syncMeta={since:null,synced:{},done:false};syncMetaText='';syncMetaSave();
+}
+
+/* ----- état local vu comme des clés (lecture brute, jamais via migrate) ----- */
+const syncMonthOf=t=>t&&typeof t.date==='string'&&/^\d{4}-\d{2}/.test(t.date)?t.date.slice(0,7):'0000-00';
+function syncLocal(){
+ let raw;try{raw=localStorage.getItem(KEY);}catch(e){throw syncErr('local','stockage indisponible sur cet appareil');}
+ if(syncCache.out&&syncCache.raw===raw)return syncCache.out;
+ const out={};
+ if(raw!==null){
+  let o;try{o=JSON.parse(raw);}catch(e){o=null;}
+  if(!o||typeof o!=='object'||!Array.isArray(o.tx))throw syncErr('local','données illisibles sur cet appareil : synchronisation suspendue');
+  const meta={};SYNC_META_FIELDS.forEach(k=>{if(k in o)meta[k]=o[k];});
+  out.meta={data:meta,hash:hashOf(meta)};
+  const by={};o.tx.forEach(t=>{const m=syncMonthOf(t);(by[m]=by[m]||[]).push(t);});
+  Object.keys(by).forEach(m=>{out['tx:'+m]={data:by[m],hash:hashOf(by[m])};});
+ }
+ syncCache={raw:raw,out:out};
+ return out;
+}
+const syncKeyOk=k=>k==='meta'||/^tx:\d{4}-\d{2}$/.test(k);
+const syncModalOpen=()=>{const m=$('modal');return !!(m&&m.classList.contains('open'));};
+
+/* ----- lecture : ce qui a changé ailleurs ----- */
+async function syncPull(){
+ let path='/rest/v1/donnees?select=cle,valeur,maj&app=eq.'+SYNC_APP+'&order=maj.asc';
+ if(syncMeta.since)path+='&maj=gt.'+encodeURIComponent(new Date(Date.parse(syncMeta.since)-3000).toISOString());   // marge de 3 s : relire deux fois ne coûte rien
+ const res=await syncFetch(path,{});
+ if(!res.ok)throw await syncHttpError(res);
+ const rows=await res.json();
+ if(!Array.isArray(rows))throw syncErr('http','réponse inattendue');
+ const first=!syncMeta.done,local=syncLocal();
+ let maxMaj=syncMeta.since,newMeta=null;
+ const monthChanges={},synced={},lost=[];
+ for(const row of rows){
+  if(!row||typeof row.cle!=='string')continue;
+  if(row.maj&&(!maxMaj||Date.parse(row.maj)>Date.parse(maxMaj)))maxMaj=row.maj;
+  const key=row.cle;
+  if(!syncKeyOk(key))continue;                                              // « sel » et « verif » ne sont pas des données
+  const env=await syncDecrypt(key,row.valeur);
+  if(!env||typeof env!=='object'||!('d' in env))continue;
+  const rdata=env.d;
+  if(key==='meta'&&(rdata===null||typeof rdata!=='object'))continue;
+  if(key!=='meta'&&rdata!==null&&!Array.isArray(rdata))continue;
+  const rhash=rdata===null?null:hashOf(rdata),l=local[key],lhash=l?l.hash:null;
+  if(rhash===lhash){synced[key]=rhash;continue;}                            // déjà identique (par exemple mon propre envoi)
+  const isDirty=l?l.hash!==syncMeta.synced[key]:(key in syncMeta.synced);   // modifié (ou supprimé) ici depuis la dernière synchro
+  if(isDirty&&!first){lost.push([key,'distant',rdata]);continue;}           // conflit : la version de cet appareil est envoyée ensuite
+  if(isDirty&&first&&l)lost.push([key,'local',l.data]);                     // première synchro : le distant l'emporte, l'ancienne version est gardée
+  if(key==='meta')newMeta=rdata;else monthChanges[key.slice(3)]=rdata;
+  synced[key]=rhash;
+ }
+ const needsApply=!!newMeta||Object.keys(monthChanges).length>0;
+ if(needsApply&&syncModalOpen())return null;                                // saisie en cours : on réessaie au prochain passage
+ lost.forEach(x=>syncKeepLost(x[0],x[1],x[2]));
+ let applied=false;
+ if(needsApply){
+  try{
+   const cand=JSON.parse(JSON.stringify(S));
+   if(newMeta)SYNC_META_FIELDS.forEach(k=>{if(k in newMeta)cand[k]=newMeta[k];});
+   const months=Object.keys(monthChanges);
+   if(months.length){cand.tx=cand.tx.filter(t=>months.indexOf(syncMonthOf(t))<0);months.forEach(m=>{if(monthChanges[m])cand.tx=cand.tx.concat(monthChanges[m]);});}
+   S=migrate(cand);reanchor();
+   localStorage.setItem(KEY,JSON.stringify(S));
+   applied=true;
+  }catch(e){throw syncErr('local','enregistrement impossible sur cet appareil');}
+ }
+ syncCache={raw:undefined,out:null};
+ const after=syncLocal();
+ Object.keys(synced).forEach(key=>{if(after[key])syncMeta.synced[key]=after[key].hash;else delete syncMeta.synced[key];});   // l'empreinte retenue est celle de ce qui est réellement enregistré ici
+ syncMeta.since=maxMaj;syncMeta.done=true;
+ return applied;
+}
+
+/* ----- écriture : ce qui a changé ici ----- */
+async function syncPush(){
+ const local=syncLocal(),rows=[];
+ Object.keys(local).forEach(key=>{if(local[key].hash!==syncMeta.synced[key])rows.push({key:key,data:local[key].data,hash:local[key].hash});});
+ Object.keys(syncMeta.synced).forEach(key=>{if(!local[key])rows.push({key:key,data:null,hash:null});});   // supprimé ici : supprimé partout
+ for(let i=0;i<rows.length;i+=20){
+  const chunk=rows.slice(i,i+20),body=[];
+  for(const r of chunk)body.push({cle:r.key,valeur:await syncEncrypt(r.key,{d:r.data})});
+  await syncPostRows(body,false);
+  chunk.forEach(r=>{if(r.hash===null)delete syncMeta.synced[r.key];else syncMeta.synced[r.key]=r.hash;});
+ }
+}
+
+/* ----- cycle ----- */
+async function syncNow(){
+ if(!syncSession||!syncKey)return;
+ if(syncBusy){syncAgain=true;return;}
+ syncBusy=true;clearTimeout(syncTimer);
+ let applied=false;
+ try{
+  applied=await syncPull();
+  await syncPush();
+  syncState.last=new Date();setSyncStatus('ok');
+ }catch(e){
+  if(e&&e.code==='auth')setSyncStatus('auth');
+  else if(e instanceof TypeError||navigator.onLine===false)setSyncStatus('offline');
+  else setSyncStatus('error',e&&e.message?e.message:String(e));
+ }finally{
+  syncMetaSave();syncBusy=false;
+  if(syncAgain){syncAgain=false;syncSchedule(300);}
+ }
+ if(applied)syncRefreshUi(true);
+}
+function syncSchedule(ms){if(!syncSession||!syncKey)return;clearTimeout(syncTimer);syncTimer=setTimeout(syncNow,ms);}
+function syncTouch(){syncSchedule(1500);}   // appelé après chaque enregistrement local
+function syncSafeToRender(){const a=document.activeElement;return !syncModalOpen()&&!(a&&/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName));}
+function syncRefreshUi(fresh){
+ if(fresh)syncUiPending=true;
+ if(!syncUiPending||!syncSafeToRender())return;   // on affiche au prochain passage, pour ne pas voler la saisie
+ syncUiPending=false;pruneSel();render();
+}
+function syncPoll(){
+ if(!syncSession||!syncKey||document.hidden||navigator.onLine===false)return;
+ if(syncUiPending)syncRefreshUi(false);
+ syncNow();
+}
+async function syncStart(){
+ if(typeof crypto==='undefined'||!crypto.subtle)return;
+ await syncLoadKey();
+ setInterval(syncPoll,SYNC_POLL_MS);
+ document.addEventListener('visibilitychange',()=>{if(!document.hidden)syncNow();});
+ window.addEventListener('online',()=>{syncNow();});
+ if(syncSession&&syncKey)syncNow();
+ else if(syncSession){try{await syncCheckSel();}catch(e){}syncRenderBox();}
+}
+
+/* ----- écran : Réglages › Synchronisation ----- */
+const hhmmss=d=>pad(d.getHours())+':'+pad(d.getMinutes())+':'+pad(d.getSeconds());
+function syncStatusText(){
+ const s=syncState;
+ if(s.status==='ok'&&s.last)return 'Synchronisé à '+hhmmss(s.last)+'.';
+ if(s.status==='offline')return 'Hors ligne : tes modifications partiront dès le retour du réseau.';
+ if(s.status==='error')return 'Erreur : '+s.msg+' (nouvel essai automatique).';
+ return 'Synchronisation en cours…';
+}
+function setSyncStatus(status,msg){
+ const was=syncState.status;syncState.status=status;syncState.msg=msg||'';
+ if(status==='auth'||was==='auth')syncRenderBox();else{const el=$('sync-status');if(el)el.textContent=syncStatusText();}
+}
+function syncBoxHTML(){
+ if(typeof crypto==='undefined'||!crypto.subtle)return '<p class="s">La synchronisation n’est pas disponible ici : le chiffrement du navigateur est absent (ouvre l’app depuis son adresse https).</p>';
+ if(!syncSession)return `<p class="s">Retrouve tes comptes sur tes autres appareils. Les données restent d’abord sur cet appareil ; une copie <b>chiffrée</b> est envoyée à ton compte, que seule ta phrase secrète permet de lire.</p>
+  ${syncState.status==='auth'?'<p class="s" role="alert" style="color:var(--red)">Ta session a expiré : reconnecte-toi.</p>':''}
+  <label>E-mail<input id="sync-email" type="text" inputmode="email" autocomplete="username" autocapitalize="none" spellcheck="false"></label>
+  <label>Mot de passe du compte<input id="sync-pass" type="password" autocomplete="current-password"></label>
+  <div class="btns"><button class="primary" data-a="sync-login">Se connecter</button></div><p class="s" id="sync-msg" role="alert" hidden></p>`;
+ if(!syncKey){
+  const nw=syncKeyMode==='new';
+  return `<p>Connecté : <b>${esc(syncSession.email||'compte')}</b></p>
+  ${syncKeyMode===null?'<p class="s">Vérification…</p><div class="btns"><button class="ghost" data-a="sync-retry">Réessayer</button><button class="ghost" data-a="sync-logout">Se déconnecter</button></div>':
+  `<p class="s">${nw?'<b>Crée ta phrase secrète.</b> Elle chiffre tes données avant l’envoi. <b>Elle doit être différente du mot de passe du compte</b> et d’au moins '+SYNC_MIN_PHRASE+' caractères. <b>Si tu la perds, les données en ligne sont perdues</b> (tes données sur l’appareil et ton export JSON restent valables). Note-la en lieu sûr.':'Saisis ta phrase secrète pour cet appareil. Elle ne sera demandée qu’une fois.'}</p>
+  <label>Phrase secrète<input id="sync-phrase" type="password" autocomplete="off"></label>
+  ${nw?'<label>Répète la phrase secrète<input id="sync-phrase2" type="password" autocomplete="off"></label>':''}
+  <div class="btns"><button class="primary" data-a="sync-phrase">${nw?'Créer et synchroniser':'Valider'}</button><button class="ghost" data-a="sync-logout">Se déconnecter</button></div><p class="s" id="sync-msg" role="alert" hidden></p>`}`;
+ }
+ return `<p>Connecté : <b>${esc(syncSession.email||'compte')}</b></p><p class="s" id="sync-status">${esc(syncStatusText())}</p>
+  <div class="btns"><button class="primary" data-a="sync-now">Synchroniser maintenant</button><button class="ghost" data-a="sync-logout">Se déconnecter</button></div>
+  <p class="s">Chaque modification est envoyée chiffrée en quelques secondes ; les changements faits ailleurs arrivent seuls. Attention : « Restaurer » un fichier et « Tout effacer » s’appliquent aussi sur tes autres appareils connectés.</p>`;
+}
+function syncRenderBox(){const b=$('sync-box');if(b)b.innerHTML=syncBoxHTML();}
+function syncSay(t){const m=$('sync-msg');if(m){m.textContent=t;m.hidden=!t;}}
+async function syncAct(a){
+ if(a==='sync-login'){
+  const email=($('sync-email')||{}).value,pass=($('sync-pass')||{}).value;
+  if(!email||!email.trim()||!pass){syncSay('Saisis ton e-mail et ton mot de passe.');return;}
+  syncSay('Connexion…');
+  try{await syncLogin(email.trim(),pass);}
+  catch(e){syncSay(e&&e.code==='bad'?'E-mail ou mot de passe incorrect.':(e instanceof TypeError?'Pas de réseau : connexion impossible.':'Connexion impossible ('+(e&&e.message?e.message:'erreur')+').'));return;}
+  syncState={status:'start',last:null,msg:''};syncRenderBox();
+  try{await syncCheckSel();}catch(e){}
+  syncRenderBox();
+ }else if(a==='sync-retry'){
+  try{await syncCheckSel();}catch(e){}
+  syncRenderBox();
+ }else if(a==='sync-phrase'){
+  const p=($('sync-phrase')||{}).value||'',p2=($('sync-phrase2')||{}).value||'';
+  if(!p){syncSay('Saisis la phrase secrète.');return;}
+  syncSay('Vérification… (quelques secondes)');
+  try{await syncSetPass(p,p2);}
+  catch(e){syncSay(e&&(e.code==='short'||e.code==='badpass')?e.message:(e instanceof TypeError?'Pas de réseau.':'Impossible ('+(e&&e.message?e.message:'erreur')+').'));if(e&&e.code==='auth'){syncRenderBox();}return;}
+  syncState={status:'start',last:null,msg:''};syncRenderBox();
+  alert('Synchronisation activée. Rappel : ta phrase secrète n’est récupérable nulle part. Note-la en lieu sûr.');
+  syncNow();
+ }else if(a==='sync-now'){syncNow();}
+ else if(a==='sync-logout'){
+  const at=syncSession?syncSession.at:null;
+  syncClearSession();syncState={status:'start',last:null,msg:''};clearTimeout(syncTimer);
+  if(at){try{fetch(SYNC_URL+'/auth/v1/logout?scope=local',{method:'POST',headers:{apikey:SYNC_KEY,Authorization:'Bearer '+at}}).catch(()=>{});}catch(e){}}
+  syncRenderBox();
+ }
+}
+document.addEventListener('keydown',e=>{
+ if(e.key!=='Enter'||!e.target.id||e.target.id.indexOf('sync-')!==0)return;
+ e.preventDefault();syncAct(e.target.id==='sync-email'||e.target.id==='sync-pass'?'sync-login':'sync-phrase');
+});
+
 /* ---------- démarrage ---------- */
 if(typeof document!=='undefined'&&document.getElementById('app')){
  if(navigator.storage&&navigator.storage.persist){navigator.storage.persist().then(ok=>{persisted=ok;}).catch(()=>{});}
  if('serviceWorker' in navigator&&location.protocol.indexOf('http')===0){navigator.serviceWorker.register('sw.js').catch(()=>{});}
+ syncLoad();
  render();
+ syncStart();
 }
 </script>
 </body>
