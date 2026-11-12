@@ -281,13 +281,12 @@ def test_suppression(a, b):
 
 
 def test_champs_locaux(a, b):
-    print('Champs propres à l’appareil : lignes cochées et dernière sauvegarde')
+    print('Dernière sauvegarde partagée ; comptes cochés propres à l’appareil')
     edit(a, "S.lastExport = '2026-11-01'; S.shown = []")
     sync(a)
     b.wait_for_timeout(500)
     sync(b)
-    b.wait_for_timeout(500)
-    check('la dernière sauvegarde de A n’arrive pas sur B', b.evaluate("() => S.lastExport") in (None, ''), b.evaluate("() => S.lastExport"))
+    check('la dernière sauvegarde de A arrive sur B (une sauvegarde vaut pour tous)', wait(b, "() => S.lastExport === '2026-11-01'"), b.evaluate("() => S.lastExport"))
     check('les comptes cochés de A n’arrivent pas sur B', b.evaluate("() => S.shown.length") >= 1)
 
 

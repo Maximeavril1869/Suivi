@@ -960,13 +960,13 @@ document.addEventListener('change',e=>{
    Local d'abord : le localStorage reste la référence, l'app marche sans réseau. Connecté, une copie CHIFFRÉE (AES-GCM, clé dérivée d'une phrase secrète
    que le serveur ne voit jamais) est envoyée à Supabase (table `donnees`, app = « suivi ») et relue toutes les 5 s. Aucune bibliothèque : fetch + WebCrypto.
    Clés : « meta » (comptes, récurrences, plans, règles, budgets, correspondances CSV, échéances ignorées) et « tx:AAAA-MM » (les lignes d'un mois).
-   Restent locaux à l'appareil : `shown` (comptes cochés) et `lastExport`. Lignes en clair : « sel » (sel public) ; « verif » (témoin chiffré de la phrase). */
+   Reste local à l'appareil : `shown` (comptes cochés). `lastExport` est partagé : une sauvegarde faite sur un appareil vaut pour tous. Lignes en clair : « sel » (sel public) ; « verif » (témoin chiffré de la phrase). */
 const SYNC_URL='https://zoyrclsppuhgnyzgodjv.supabase.co';
 const SYNC_KEY='sb_publishable_rHeMIa4CSjCjZXpAI-0tTQ_QC1O06Ng';   // clé publique : la protection vient des règles d'accès de la table
 const SYNC_APP='suivi';
 const SYNC_SESSION_KEY='compte-sync-session',SYNC_META_KEY='compte-sync-meta',SYNC_CLE_KEY='compte-sync-cle',SYNC_LOST_KEY='compte-sync-conflits';
 const SYNC_POLL_MS=5000,SYNC_PBKDF2=600000,SYNC_MIN_PHRASE=12;
-const SYNC_META_FIELDS=['v','accounts','rec','plans','rules','budgets','csvMaps','skips'];
+const SYNC_META_FIELDS=['v','accounts','rec','plans','rules','budgets','csvMaps','skips','lastExport'];
 let syncSession=null,syncKey=null,syncKeyMode=null,syncMeta={since:null,synced:{},done:false};
 let syncState={status:'start',last:null,msg:''},syncBusy=false,syncAgain=false,syncTimer=null,syncRefreshing=null,syncUiPending=false,syncCache={raw:undefined,out:null},syncMetaText='';
 const SYNC_ENC=new TextEncoder(),SYNC_DEC=new TextDecoder();

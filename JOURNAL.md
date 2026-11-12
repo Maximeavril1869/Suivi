@@ -5,7 +5,7 @@ Les entrées les plus récentes sont en haut. À chaque intervention, ajouter un
 
 ## État actuel (2026-11-11)
 
-- App PWA locale d'abord (un seul fichier `index.html`), publiée sur GitHub Pages, utilisée sur iPhone. **Synchronisation chiffrée** ajoutée le 2026-11-11 (à valider sur iPhone et iPad). Service worker en version `compte-v18`.
+- App PWA locale d'abord (un seul fichier `index.html`), publiée sur GitHub Pages, utilisée sur iPhone. **Synchronisation chiffrée** ajoutée le 2026-11-11 (à valider sur iPhone et iPad). Service worker en version `compte-v19`.
 - Plan en 3 étapes entièrement présent dans le code : comptes multiples + virements, paiements en plusieurs fois, emprunts / livrets / cartes.
 - Reste à faire : tester l'import CSV avec l'export réel de la banque (point en attente depuis la première version) ; valider la synchronisation sur appareil.
 - Aucune donnée réelle n'est stockée dans le dépôt.
@@ -17,6 +17,12 @@ Les entrées les plus récentes sont en haut. À chaque intervention, ajouter un
 - Service worker en version `compte-v17`.
 - Reste à faire : tester l'import CSV avec l'export réel de la banque (point en attente depuis la première version).
 - Aucune donnée réelle n'est stockée dans le dépôt.
+
+## 2026-11-12 — La dernière sauvegarde est partagée entre appareils
+
+- Retour de test : la synchronisation fonctionne sur iPhone et iPad. Remarque de l'utilisateur : la sauvegarde était attendue séparément sur chaque appareil, « un peu bête » puisque les données sont les mêmes.
+- Fait : `lastExport` rejoint les données synchronisées (clé `meta`) ; seuls les comptes cochés restent propres à l'appareil. Une sauvegarde faite sur un appareil supprime le rappel sur les autres. Service worker `compte-v19`. Test adapté.
+- Point ouvert : le rappel de l'accueil se déclenche seulement après 30 jours sans export (ou jamais exporté) quand il y a des lignes ; il disparaît donc après un export, ce qui est normal. À comparer avec Plan du jour (délai réglable, rappel basé sur les modifications) si l'utilisateur le souhaite.
 
 ## 2026-11-11 — Synchronisation chiffrée entre appareils
 

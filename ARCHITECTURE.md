@@ -106,7 +106,7 @@ flowchart LR
 |---|---|
 | Compte | Même utilisateur Supabase que Plan du jour (un seul projet pour les apps perso), inscriptions fermées. Mot de passe du compte ≠ phrase secrète |
 | Découpage | `meta` (comptes, récurrences, plans, règles, budgets, correspondances CSV, échéances ignorées) et `tx:AAAA-MM` (les lignes d'un mois) : seul ce qui change est envoyé ou relu |
-| Local à l'appareil | `shown` (comptes cochés) et `lastExport` ne sont pas synchronisés |
+| Local à l'appareil | `shown` (comptes cochés) n'est pas synchronisé. `lastExport` (date de la dernière sauvegarde) l'est : une sauvegarde faite sur un appareil vaut pour tous, le rappel disparaît partout |
 | Chiffrement | AES-GCM 256, clé dérivée de la phrase par PBKDF2-SHA-256 (600 000 itérations, sel public dans la ligne `sel`). Le nom de la ligne est authentifié : le serveur ne peut pas échanger deux lignes. Ligne `verif` : témoin qui valide la phrase |
 | Clé sur l'appareil | La clé dérivée est gardée dans le `localStorage` (`compte-sync-cle`) pour ne demander la phrase qu'une fois ; les données y sont déjà en clair, donc aucun risque de plus. Se déconnecter l'efface |
 | Ce que voit le serveur | L'e-mail du compte, les noms de ligne (`tx:AAAA-MM` : quels mois ont de l'activité), la taille et la date des envois. Aucun libellé, montant, nom de compte |
