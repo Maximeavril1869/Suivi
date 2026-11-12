@@ -35,7 +35,7 @@ Principe : une seule variable d'état `S`, modifiée par les actions, enregistr�
 ## Stockage et données
 
 - Stockage : `localStorage`, clé `compte-salaire-v1`. Sans connexion à un compte, rien n'est envoyé sur le réseau.
-- Sauvegarde manuelle : export JSON (feuille de partage iOS) et restauration depuis un fichier. **Rappel de sauvegarde** (depuis `compte-v20`) : même logique que Plan du jour, voir « Rappel de sauvegarde » plus bas.
+- Sauvegarde manuelle : export JSON (feuille de partage iOS) et restauration depuis un fichier. **Rappel de sauvegarde** (depuis `compte-v20`, sur toutes les vues depuis `compte-v21`) : même logique que Plan du jour, voir « Rappel de sauvegarde » plus bas.
 - `migrate()` met à niveau les anciennes données à chaque chargement (version de schéma `v:2`).
 
 Contenu de l'état `S` :
@@ -62,7 +62,7 @@ Navigation en bas, 5 vues (objet `VIEWS`) :
 
 | Vue | Fonction | Contenu |
 |---|---|---|
-| Accueil | `homeHTML` | Solde, graphique, répartition, bloc « Sortir du découvert », rappel de sauvegarde, échéances à valider |
+| Accueil | `homeHTML` | Solde, graphique, répartition, bloc « Sortir du découvert », échéances à valider (le rappel de sauvegarde est en tête de toutes les vues) |
 | Lignes | `linesHTML` | Liste filtrable, sélection multiple et modification groupée |
 | Récurrent | `recHTML` | Échéances à valider, récurrences, paiements en plusieurs fois |
 | Import | `impHTML` | Import CSV avec choix des colonnes |
@@ -88,7 +88,7 @@ Cycle d'une échéance : la récurrence génère une échéance « à valider »
 ## Mise à jour et déploiement
 
 - Hébergement : GitHub Pages à partir du dépôt (branche par défaut `main`).
-- Le service worker (`sw.js`) a une version de cache (constante `V`, actuellement `compte-v20`). **À chaque modification publiée, incrémenter cette version** pour que l'iPhone récupère la nouvelle app.
+- Le service worker (`sw.js`) a une version de cache (constante `V`, actuellement `compte-v21`). **À chaque modification publiée, incrémenter cette version** pour que l'iPhone récupère la nouvelle app, **et la constante `APP_VERSION` de `index.html`** (même numéro : `21` pour `compte-v21`), affichée en bas de Réglages (« Mon Compte · version 21 ») pour vérifier quelle version tourne sur l'appareil.
 - Aucune étape de build : modifier `index.html`, commiter, pousser.
 
 ## Synchronisation chiffrée
@@ -124,7 +124,7 @@ Décidé le 2026-11-12 : même comportement que Plan du jour. L'état `S.bk` fai
 
 - `save()` date la première modification non sauvegardée (`bk.since`). `save(true)` (mode « silencieux ») ne la date pas : utilisé pour cocher un compte, régler le délai, reporter le rappel, exporter et restaurer.
 - Un export (`bkSaved`) remet `since` et `snooze` à zéro et date `lastExport`. Une restauration depuis un fichier remet aussi `since` à zéro (l'appareil est identique au fichier).
-- La carte « Sauvegarde conseillée » de l'Accueil apparaît quand `since` existe depuis au moins `every` jours (`bkDue`), sauf report (« Plus tard » : jusqu'au lendemain) ou délai « Jamais ». Réglage dans Réglages › Sauvegarde.
+- La carte « Sauvegarde conseillée » apparaît **en tête de toutes les vues** (ajoutée par `render()`) quand `since` existe depuis au moins `every` jours (`bkDue`), sauf report (« Plus tard » : jusqu'au lendemain) ou délai « Jamais ». Réglage dans Réglages › Sauvegarde.
 - Migration : des données d'avant le rappel, sans `bk` et jamais exportées, démarrent le compte aujourd'hui ; si `lastExport` existe, rien n'est dû tant qu'on ne modifie pas. L'ancienne règle « 30 jours sans export » n'existe plus.
 
 ## Bannière « Hors ligne »
