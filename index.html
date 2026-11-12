@@ -93,6 +93,7 @@ td,th{padding:4px;border-bottom:1px solid var(--line);text-align:left}
 <div id="offbar" role="status" aria-live="polite" hidden>Hors ligne : tes modifications sont gardées sur cet appareil</div>
 <script>
 const KEY='compte-salaire-v1';
+const APP_VERSION='21';   // identique au numéro de la constante V de sw.js (compte-v21) : à incrémenter ensemble à chaque livraison
 const CATS={
  'Revenus':['Salaire','Primes','Remboursements','Intérêts','Autres revenus'],
  'Logement':['Loyer / crédit','Charges','Énergie','Internet / téléphone','Assurance habitation','Travaux / mobilier'],
@@ -433,7 +434,6 @@ function homeHTML(){
  const balNow=balanceAt(now,false),rav=balanceAt(now,true);
  const due=dueRange(R.from,R.to);
  let h='';
- h+=bkBannerHTML();
  if(!S.tx.length){
   h+=`<div class="card"><b>Pour démarrer</b><ol class="mut" style="margin:6px 0 0;padding-left:20px"><li>Réglages : crée tes comptes et indique leur solde actuel.</li><li>Import : charge le CSV de ta banque.</li><li>Récurrent : ajoute loyer, salaire, abonnements.</li></ol></div>`;
  }
@@ -610,11 +610,12 @@ const grp=[];S.accounts.forEach(a=>{const g=a.group||'';let e=grp.find(x=>x.g===
  <div class="card"><b>Sauvegarde</b><p class="s">${bkInfoHTML()} Stockage persistant : ${persisted===true?'oui':persisted===false?'non accordé':'inconnu'}.</p>
  <label>Me rappeler quand des modifications ne sont pas sauvegardées depuis<select id="bk_every">${BK_EVERY.map(n=>`<option value="${n}"${n===S.bk.every?' selected':''}>${n===0?'Jamais (pas de rappel)':n+' jour'+(n>1?'s':'')}</option>`).join('')}</select></label>
  <div class="btns"><button class="primary" data-a="export">Exporter (JSON)</button><label class="ghost" style="text-align:center">Restaurer<input type="file" id="jsonfile" accept=".json,application/json" hidden></label></div></div>
- <div class="card"><b>Zone dangereuse</b><p class="s">Efface toutes les données de l'app sur ce téléphone.</p><button class="danger" data-a="wipe">Tout effacer</button></div>`;
+ <div class="card"><b>Zone dangereuse</b><p class="s">Efface toutes les données de l'app sur ce téléphone.</p><button class="danger" data-a="wipe">Tout effacer</button></div>
+ <p class="s" id="app-version" style="text-align:center;margin:14px 0 0">Mon Compte · version ${APP_VERSION}</p>`;
 }
 const VIEWS={home:homeHTML,tx:linesHTML,rec:recHTML,imp:impHTML,set:setHTML};
 function render(){
- $('app').innerHTML=VIEWS[view]();
+ $('app').innerHTML=bkBannerHTML()+VIEWS[view]();   // le rappel de sauvegarde est commun à toutes les vues
  document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.v===view));
 }
 

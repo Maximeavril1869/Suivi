@@ -1,4 +1,4 @@
-const V = 'compte-v20';
+const V = 'compte-v21';
 const FILES = ['./', 'index.html', 'manifest.json', 'icon-180.png', 'icon-512.png'];
 
 self.addEventListener('install', e => {

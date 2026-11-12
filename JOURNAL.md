@@ -24,7 +24,7 @@ Les entrées les plus récentes sont en haut. À chaque intervention, ajouter un
 - Fait : état `bk` (`since`, `snooze`, `every`) dans les données et la ligne `meta` synchronisée ; `save(true)` pour les enregistrements qui ne sont pas des modifications (cocher un compte, régler le rappel, exporter, restaurer) ; carte « Sauvegarde conseillée » avec « Plus tard » ; délai réglable dans Réglages › Sauvegarde (jamais, 3, 7, 14, 30 jours ; 7 par défaut). L'ancienne règle « 30 jours sans export » est supprimée.
 - Fait : bannière `#offbar` visible sur toutes les vues, `pointer-events: none`, bouton « + » et bas de page décalés quand elle est affichée. Elle n'apparaît que si un compte est connecté. Détection : événement `offline` **et** échec réseau de la synchro (le Wi-Fi sans internet n'est pas vu par `navigator.onLine`).
 - Écart voulu avec le rappel de Plan du jour : ici le rappel reste sur l'Accueil seulement (il l'était déjà) ; Plan du jour l'affiche sur tous les onglets.
-- Service worker `compte-v20`. Tests : `tests/test_rappel_et_hors_ligne.py` (44 vérifications) ; `tests/test_sync.py` inchangé (57 vérifications, passent).
+- Service worker `compte-v20`. Tests : `tests/test_rappel_et_hors_ligne.py` (44 vérifications au départ, 50 ensuite) ; `tests/test_sync.py` inchangé (57 vérifications, passent).
 - Reste à valider sur iPhone et iPad : rappel (sauvegarde sur un appareil, ~10 s, rappel disparu sur l'autre) ; bannière (mode avion : apparition immédiate ; retour du réseau : disparition en quelques secondes).
 - Non testé en conditions réelles : le vrai service Supabase (faux serveur uniquement) et le comportement exact d'iOS en Wi-Fi sans internet.
 
