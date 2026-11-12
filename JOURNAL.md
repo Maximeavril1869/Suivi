@@ -3,9 +3,9 @@
 Journal des opérations réalisées sur le projet, à relire pour savoir où il en est.
 Les entrées les plus récentes sont en haut. À chaque intervention, ajouter une entrée datée.
 
-## État actuel (2026-11-11)
+## État actuel (2026-11-12)
 
-- App PWA locale d'abord (un seul fichier `index.html`), publiée sur GitHub Pages, utilisée sur iPhone. **Synchronisation chiffrée** ajoutée le 2026-11-11 (à valider sur iPhone et iPad). Service worker en version `compte-v19`.
+- App PWA locale d'abord (un seul fichier `index.html`), publiée sur GitHub Pages, utilisée sur iPhone et iPad. **Synchronisation chiffrée** (validée sur appareils le 2026-11-12), **rappel de sauvegarde partagé** (même logique que Plan du jour) et **bannière « Hors ligne »** ajoutés le 2026-11-12 (à valider sur iPhone et iPad). Service worker en version `compte-v20`.
 - Plan en 3 étapes entièrement présent dans le code : comptes multiples + virements, paiements en plusieurs fois, emprunts / livrets / cartes.
 - Reste à faire : tester l'import CSV avec l'export réel de la banque (point en attente depuis la première version) ; valider la synchronisation sur appareil.
 - Aucune donnée réelle n'est stockée dans le dépôt.
@@ -17,6 +17,16 @@ Les entrées les plus récentes sont en haut. À chaque intervention, ajouter un
 - Service worker en version `compte-v17`.
 - Reste à faire : tester l'import CSV avec l'export réel de la banque (point en attente depuis la première version).
 - Aucune donnée réelle n'est stockée dans le dépôt.
+
+## 2026-11-12 (soir) — Rappel de sauvegarde comme Plan du jour, bannière « Hors ligne »
+
+- Réponses de l'utilisateur : (1) il veut le **même rappel que Plan du jour** (délai réglable, déclenché par les modifications non sauvegardées) ; (2) une **bannière** qui annonce l'absence de réseau **sans empêcher d'utiliser l'app** ; (3) placée **en bas, au-dessus des onglets**.
+- Fait : état `bk` (`since`, `snooze`, `every`) dans les données et la ligne `meta` synchronisée ; `save(true)` pour les enregistrements qui ne sont pas des modifications (cocher un compte, régler le rappel, exporter, restaurer) ; carte « Sauvegarde conseillée » avec « Plus tard » ; délai réglable dans Réglages › Sauvegarde (jamais, 3, 7, 14, 30 jours ; 7 par défaut). L'ancienne règle « 30 jours sans export » est supprimée.
+- Fait : bannière `#offbar` visible sur toutes les vues, `pointer-events: none`, bouton « + » et bas de page décalés quand elle est affichée. Elle n'apparaît que si un compte est connecté. Détection : événement `offline` **et** échec réseau de la synchro (le Wi-Fi sans internet n'est pas vu par `navigator.onLine`).
+- Écart voulu avec le rappel de Plan du jour : ici le rappel reste sur l'Accueil seulement (il l'était déjà) ; Plan du jour l'affiche sur tous les onglets.
+- Service worker `compte-v20`. Tests : `tests/test_rappel_et_hors_ligne.py` (44 vérifications) ; `tests/test_sync.py` inchangé (57 vérifications, passent).
+- Reste à valider sur iPhone et iPad : rappel (sauvegarde sur un appareil, ~10 s, rappel disparu sur l'autre) ; bannière (mode avion : apparition immédiate ; retour du réseau : disparition en quelques secondes).
+- Non testé en conditions réelles : le vrai service Supabase (faux serveur uniquement) et le comportement exact d'iOS en Wi-Fi sans internet.
 
 ## 2026-11-12 — La dernière sauvegarde est partagée entre appareils
 

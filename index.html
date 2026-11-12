@@ -61,6 +61,11 @@ summary::-webkit-details-marker{display:none}
 nav{position:fixed;left:0;right:0;bottom:0;display:flex;background:var(--card);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom)}
 nav button{flex:1;border:0;background:none;color:var(--mut);padding:12px 2px;font-size:12px}
 nav button.on{color:var(--pri);font-weight:700}
+#offbar{position:fixed;left:0;right:0;bottom:var(--navh,56px);height:28px;line-height:27px;padding:0 10px;text-align:center;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:#fef3c7;color:#92400e;border-top:1px solid #fcd34d;z-index:9;pointer-events:none}
+#offbar[hidden]{display:none}
+@media(prefers-color-scheme:dark){#offbar{background:#3b2f0b;color:#fcd34d;border-color:#78591a}}
+body.off #app{padding-bottom:calc(120px + env(safe-area-inset-bottom))}
+body.off .fab{bottom:calc(104px + env(safe-area-inset-bottom))}
 #modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:10;align-items:flex-end;justify-content:center}
 #modal.open{display:flex}
 .sheet{background:var(--card);width:100%;max-width:640px;max-height:92vh;overflow:auto;border-radius:18px 18px 0 0;padding:16px 16px calc(20px + env(safe-area-inset-bottom))}
@@ -85,6 +90,7 @@ td,th{padding:4px;border-bottom:1px solid var(--line);text-align:left}
 <button data-a="nav" data-v="imp">Import</button>
 <button data-a="nav" data-v="set">Réglages</button>
 </nav>
+<div id="offbar" role="status" aria-live="polite" hidden>Hors ligne : tes modifications sont gardées sur cet appareil</div>
 <script>
 const KEY='compte-salaire-v1';
 const CATS={
@@ -98,9 +104,18 @@ const CATS={
  'Divers':['Cadeaux','Imprévus','Non classé']
 };
 const RK='Loisirs|Restaurants / bars';
-const defaultState=()=>({v:2,accounts:[{id:'a1',name:'Compte salaire',type:'courant',opening:0,cash:true}],shown:['a1'],tx:[],rec:[],plans:[],rules:[],budgets:{},csvMaps:{},skips:[],lastExport:null});
+const defaultState=()=>({v:2,accounts:[{id:'a1',name:'Compte salaire',type:'courant',opening:0,cash:true}],shown:['a1'],tx:[],rec:[],plans:[],rules:[],budgets:{},csvMaps:{},skips:[],lastExport:null,bk:{since:null,snooze:null,every:7}});
+/* Rappel de sauvegarde (partagé entre appareils, clé « bk » de la ligne meta) : since = date de la première modification non sauvegardée,
+   snooze = rappel reporté jusqu'à cette date, every = délai en jours (0 = jamais). Le rappel n'apparaît que s'il y a des modifications non sauvegardées. */
+const BK_EVERY=[0,3,7,14,30],BK_DEFAULT=7;
+const bkIsDay=v=>typeof v==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(v);
+function bkToday(){const d=new Date(),p=n=>String(n).padStart(2,'0');return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());}   // fonction (pas const) : migrate() s'exécute avant les const plus bas
+function normBk(b){b=b&&typeof b==='object'?b:{};return{since:bkIsDay(b.since)?b.since:null,snooze:bkIsDay(b.snooze)?b.snooze:null,every:BK_EVERY.includes(b.every)?b.every:BK_DEFAULT};}
 function migrate(raw){
+ const hadBk=!!(raw&&raw.bk&&typeof raw.bk==='object');
  const o=Object.assign(defaultState(),raw||{});
+ o.bk=normBk(hadBk?o.bk:null);
+ if(raw&&!hadBk&&Array.isArray(o.tx)&&o.tx.length&&!o.lastExport)o.bk.since=bkToday();   // données d'avant le rappel, jamais exportées : le compte commence aujourd'hui
  if(!raw||!Array.isArray(raw.accounts)||!raw.accounts.length){o.accounts=[{id:'a1',name:'Compte salaire',type:'courant',opening:(raw&&raw.opening)||0,cash:true}];o.shown=['a1'];}
  const first=o.accounts[0].id;
  o.accounts.forEach(a=>{if(a.type==='paypal')a.type='courant';});
@@ -122,7 +137,7 @@ let S=load();
 function reanchor(){
  S.accounts.forEach(a=>{if(a.anchor){a.adj=Math.round((a.anchor.amount-S.tx.filter(t=>t.acc===a.id&&t.date<=a.anchor.date).reduce((s,t)=>s+t.amount,0))*100)/100;a.opening=0;}});
 }
-function save(){reanchor();try{localStorage.setItem(KEY,JSON.stringify(S));syncTouch();}catch(e){alert("Impossible d'enregistrer : stockage plein ou bloqué.");}}
+function save(quiet){reanchor();if(!quiet){if(!S.bk)S.bk=normBk(null);if(!S.bk.since)S.bk.since=bkToday();}try{localStorage.setItem(KEY,JSON.stringify(S));syncTouch();}catch(e){alert("Impossible d'enregistrer : stockage plein ou bloqué.");}}
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 const fmt=n=>new Intl.NumberFormat('fr-FR',{style:'currency',currency:'EUR'}).format(n);
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -418,9 +433,7 @@ function homeHTML(){
  const balNow=balanceAt(now,false),rav=balanceAt(now,true);
  const due=dueRange(R.from,R.to);
  let h='';
- if(S.tx.length&&(!S.lastExport||(new Date(now)-new Date(S.lastExport))/86400000>30)){
-  h+=`<div class="card warn"><b>Sauvegarde conseillée</b><div class="s">${S.lastExport?'Dernière sauvegarde : '+frDate(S.lastExport):'Aucune sauvegarde faite.'} Tes données ne sont que sur ce téléphone.</div><div style="margin-top:8px"><button class="primary small" data-a="export">Sauvegarder maintenant</button></div></div>`;
- }
+ h+=bkBannerHTML();
  if(!S.tx.length){
   h+=`<div class="card"><b>Pour démarrer</b><ol class="mut" style="margin:6px 0 0;padding-left:20px"><li>Réglages : crée tes comptes et indique leur solde actuel.</li><li>Import : charge le CSV de ta banque.</li><li>Récurrent : ajoute loyer, salaire, abonnements.</li></ol></div>`;
  }
@@ -594,7 +607,8 @@ const grp=[];S.accounts.forEach(a=>{const g=a.group||'';let e=grp.find(x=>x.g===
  <div class="card"><b>Budgets mensuels</b>${buds}<div style="margin-top:10px"><label>Catégorie<select id="b_key">${budOpts}</select></label><label>Plafond par mois (€)<input id="b_amt" inputmode="decimal"></label><button class="primary" data-a="addbudget">Ajouter</button></div></div>
  <div class="card"><b>Règles de classement automatique</b>${rules}</div>
  <div class="card"><b>Synchronisation</b><div id="sync-box">${syncBoxHTML()}</div></div>
- <div class="card"><b>Sauvegarde</b><p class="s">${S.lastExport?'Dernière sauvegarde : '+frDate(S.lastExport):'Aucune sauvegarde faite.'} Stockage persistant : ${persisted===true?'oui':persisted===false?'non accordé':'inconnu'}.</p>
+ <div class="card"><b>Sauvegarde</b><p class="s">${bkInfoHTML()} Stockage persistant : ${persisted===true?'oui':persisted===false?'non accordé':'inconnu'}.</p>
+ <label>Me rappeler quand des modifications ne sont pas sauvegardées depuis<select id="bk_every">${BK_EVERY.map(n=>`<option value="${n}"${n===S.bk.every?' selected':''}>${n===0?'Jamais (pas de rappel)':n+' jour'+(n>1?'s':'')}</option>`).join('')}</select></label>
  <div class="btns"><button class="primary" data-a="export">Exporter (JSON)</button><label class="ghost" style="text-align:center">Restaurer<input type="file" id="jsonfile" accept=".json,application/json" hidden></label></div></div>
  <div class="card"><b>Zone dangereuse</b><p class="s">Efface toutes les données de l'app sur ce téléphone.</p><button class="danger" data-a="wipe">Tout effacer</button></div>`;
 }
@@ -834,15 +848,27 @@ function saveRec(){
  save();closeModal();render();
 }
 
+/* ---------- rappel de sauvegarde ---------- */
+function bkSaved(){S.lastExport=today();S.bk.since=null;S.bk.snooze=null;save(true);}   // un export vaut pour tous les appareils (partagé)
+function bkDays(a,b){return Math.round((new Date(b+'T12:00:00')-new Date(a+'T12:00:00'))/86400000);}
+function bkPlus1(d){const x=new Date(d+'T12:00:00');x.setDate(x.getDate()+1);return ymd(x);}
+function bkDue(){const b=S.bk,t=today();if(!b||b.every===0||!b.since||(b.snooze&&b.snooze>t))return null;const n=bkDays(b.since,t);return n>=b.every?{days:n,since:b.since}:null;}
+function bkBannerHTML(){
+ const d=bkDue();if(!d)return '';
+ return `<div class="card warn"><b>Sauvegarde conseillée</b><div class="s">Des modifications ne sont pas sauvegardées depuis ${d.days} jour${d.days>1?'s':''} (depuis le ${frDate(d.since)}). ${S.lastExport?'Dernière sauvegarde : '+frDate(S.lastExport)+'.':'Aucune sauvegarde faite.'} ${syncSession&&syncKey?'Une copie chiffrée est en ligne, mais l’export reste la vraie sauvegarde.':'Tes données ne sont que sur cet appareil.'}</div><div class="btns" style="margin-top:8px"><button class="primary small" data-a="export">Sauvegarder maintenant</button><button class="ghost small" data-a="bk-later">Plus tard</button></div></div>`;
+}
+function bkInfoHTML(){
+ return (S.lastExport?'Dernière sauvegarde : '+frDate(S.lastExport)+'.':'Aucune sauvegarde faite.')+' '+(S.bk.since?'Modifications non sauvegardées depuis le '+frDate(S.bk.since)+'.':'Aucune modification depuis la dernière sauvegarde.');
+}
 /* ---------- actions ---------- */
 async function exportJSON(){
  const json=JSON.stringify(S,null,1);const name='compte-'+today()+'.json';
  const file=new File([json],name,{type:'application/json'});
  try{
-  if(navigator.canShare&&navigator.canShare({files:[file]})){await navigator.share({files:[file],title:name});S.lastExport=today();save();render();return;}
+  if(navigator.canShare&&navigator.canShare({files:[file]})){await navigator.share({files:[file],title:name});bkSaved();render();return;}
  }catch(e){if(e&&e.name==='AbortError')return;}
  const a=document.createElement('a');a.href=URL.createObjectURL(file);a.download=name;document.body.appendChild(a);a.click();a.remove();
- S.lastExport=today();save();render();
+ bkSaved();render();
 }
 function doImport(){
  const {ok}=impParse();
@@ -891,7 +917,7 @@ function act(a,ds){
  else if(a==='goday'){per='day';setAnchor(ds.d);pruneSel();render();}
  else if(a==='negbal'){const i=$('ac_bal');if(i){const v=i.value.trim();i.value=v.startsWith('-')?v.slice(1):(v?'-'+v:'-');}}
  else if(a==='newtx')openTx(null);
- else if(a==='togacc'){const i=S.shown.indexOf(ds.id);if(i>=0)S.shown.splice(i,1);else S.shown.push(ds.id);save();pruneSel();render();}
+ else if(a==='togacc'){const i=S.shown.indexOf(ds.id);if(i>=0)S.shown.splice(i,1);else S.shown.push(ds.id);save(true);pruneSel();render();}
  else if(a==='newxfer')openXfer();
  else if(a==='savexfer')saveXfer();
  else if(a==='newacc')openAcc(null);
@@ -921,6 +947,7 @@ function act(a,ds){
  else if(a==='validate'){const it=dueRange(range().from,range().to).find(x=>x.k===ds.k);if(it)openTx(null,{date:it.d,label:it.r.label,amount:it.amount,cat:it.r.cat,sub:it.r.sub,acc:it.r.acc,payee:it.r.payee||'',xacc:it.r.loan||''},it.k);}
  else if(a==='skip'){S.skips.push(ds.k);save();render();}
  else if(a==='export')exportJSON();
+ else if(a==='bk-later'){S.bk.snooze=bkPlus1(today());save(true);render();}
  else if(a==='impcancel'){imp=null;render();}
  else if(a==='doimport')doImport();
  else if(a==='delrule'){S.rules=S.rules.filter(r=>r.kw!==ds.kw);save();render();}
@@ -942,9 +969,10 @@ document.addEventListener('change',e=>{
  else if(t.id==='csv'&&t.files[0]){const rd=new FileReader();rd.onload=()=>{let txt=rd.result;onFile(txt);};rd.readAsText(t.files[0],'utf-8');}
  else if(t.id==='jsonfile'&&t.files[0]){
   const rd=new FileReader();
-  rd.onload=()=>{try{const o=JSON.parse(rd.result);if(!Array.isArray(o.tx))throw 0;if(confirm('Remplacer toutes les données actuelles par cette sauvegarde ?')){S=migrate(o);save();render();}}catch(x){alert('Fichier de sauvegarde invalide.');}};
+  rd.onload=()=>{try{const o=JSON.parse(rd.result);if(!Array.isArray(o.tx))throw 0;if(confirm('Remplacer toutes les données actuelles par cette sauvegarde ?')){S=migrate(o);S.bk.since=null;S.bk.snooze=null;save(true);render();}}catch(x){alert('Fichier de sauvegarde invalide.');}};
   rd.readAsText(t.files[0]);
  }
+ else if(t.id==='bk_every'){S.bk.every=parseInt(t.value);S.bk.snooze=null;save(true);render();}
  else if(t.dataset&&t.dataset.imp){imp.map[t.dataset.imp]=parseInt(t.value);render();}
  else if(t.name==='mode'){imp.map.mode=t.value;render();}
  else if(t.id==='fcat'){fcat=t.value;pruneSel();render();}
@@ -960,13 +988,13 @@ document.addEventListener('change',e=>{
    Local d'abord : le localStorage reste la référence, l'app marche sans réseau. Connecté, une copie CHIFFRÉE (AES-GCM, clé dérivée d'une phrase secrète
    que le serveur ne voit jamais) est envoyée à Supabase (table `donnees`, app = « suivi ») et relue toutes les 5 s. Aucune bibliothèque : fetch + WebCrypto.
    Clés : « meta » (comptes, récurrences, plans, règles, budgets, correspondances CSV, échéances ignorées) et « tx:AAAA-MM » (les lignes d'un mois).
-   Reste local à l'appareil : `shown` (comptes cochés). `lastExport` est partagé : une sauvegarde faite sur un appareil vaut pour tous. Lignes en clair : « sel » (sel public) ; « verif » (témoin chiffré de la phrase). */
+   Reste local à l'appareil : `shown` (comptes cochés). `lastExport` et `bk` (état du rappel de sauvegarde) sont partagés : une sauvegarde faite sur un appareil vaut pour tous. Lignes en clair : « sel » (sel public) ; « verif » (témoin chiffré de la phrase). */
 const SYNC_URL='https://zoyrclsppuhgnyzgodjv.supabase.co';
 const SYNC_KEY='sb_publishable_rHeMIa4CSjCjZXpAI-0tTQ_QC1O06Ng';   // clé publique : la protection vient des règles d'accès de la table
 const SYNC_APP='suivi';
 const SYNC_SESSION_KEY='compte-sync-session',SYNC_META_KEY='compte-sync-meta',SYNC_CLE_KEY='compte-sync-cle',SYNC_LOST_KEY='compte-sync-conflits';
 const SYNC_POLL_MS=5000,SYNC_PBKDF2=600000,SYNC_MIN_PHRASE=12;
-const SYNC_META_FIELDS=['v','accounts','rec','plans','rules','budgets','csvMaps','skips','lastExport'];
+const SYNC_META_FIELDS=['v','accounts','rec','plans','rules','budgets','csvMaps','skips','lastExport','bk'];
 let syncSession=null,syncKey=null,syncKeyMode=null,syncMeta={since:null,synced:{},done:false};
 let syncState={status:'start',last:null,msg:''},syncBusy=false,syncAgain=false,syncTimer=null,syncRefreshing=null,syncUiPending=false,syncCache={raw:undefined,out:null},syncMetaText='';
 const SYNC_ENC=new TextEncoder(),SYNC_DEC=new TextDecoder();
@@ -1213,6 +1241,7 @@ function syncRefreshUi(fresh){
  syncUiPending=false;pruneSel();render();
 }
 function syncPoll(){
+ offbarUpdate();
  if(!syncSession||!syncKey||document.hidden||navigator.onLine===false)return;
  if(syncUiPending)syncRefreshUi(false);
  syncNow();
@@ -1223,6 +1252,8 @@ async function syncStart(){
  setInterval(syncPoll,SYNC_POLL_MS);
  document.addEventListener('visibilitychange',()=>{if(!document.hidden)syncNow();});
  window.addEventListener('online',()=>{syncNow();});
+ window.addEventListener('offline',offbarUpdate);
+ window.addEventListener('resize',offbarUpdate);
  if(syncSession&&syncKey)syncNow();
  else if(syncSession){try{await syncCheckSel();}catch(e){}syncRenderBox();}
 }
@@ -1236,8 +1267,16 @@ function syncStatusText(){
  if(s.status==='error')return 'Erreur : '+s.msg+' (nouvel essai automatique).';
  return 'Synchronisation en cours…';
 }
+/* Bannière « Hors ligne » : visible sur tous les écrans, au-dessus des onglets, sans rien bloquer (pointer-events:none). Affichée seulement si un compte est connecté
+   (sinon il n'y a rien à synchroniser) et que le réseau manque : navigateur hors ligne, ou dernière tentative de synchro tombée en échec réseau. */
+function offbarUpdate(){
+ const el=$('offbar');if(!el)return;
+ const off=!!(syncSession&&syncKey&&(syncState.status==='offline'||navigator.onLine===false));
+ if(off){const n=document.querySelector('nav');if(n)document.documentElement.style.setProperty('--navh',n.offsetHeight+'px');}
+ el.hidden=!off;document.body.classList.toggle('off',off);
+}
 function setSyncStatus(status,msg){
- const was=syncState.status;syncState.status=status;syncState.msg=msg||'';
+ const was=syncState.status;syncState.status=status;syncState.msg=msg||'';offbarUpdate();
  if(status==='auth'||was==='auth')syncRenderBox();else{const el=$('sync-status');if(el)el.textContent=syncStatusText();}
 }
 function syncBoxHTML(){
@@ -1260,7 +1299,7 @@ function syncBoxHTML(){
   <div class="btns"><button class="primary" data-a="sync-now">Synchroniser maintenant</button><button class="ghost" data-a="sync-logout">Se déconnecter</button></div>
   <p class="s">Chaque modification est envoyée chiffrée en quelques secondes ; les changements faits ailleurs arrivent seuls. Attention : « Restaurer » un fichier et « Tout effacer » s’appliquent aussi sur tes autres appareils connectés.</p>`;
 }
-function syncRenderBox(){const b=$('sync-box');if(b)b.innerHTML=syncBoxHTML();}
+function syncRenderBox(){offbarUpdate();const b=$('sync-box');if(b)b.innerHTML=syncBoxHTML();}
 function syncSay(t){const m=$('sync-msg');if(m){m.textContent=t;m.hidden=!t;}}
 async function syncAct(a){
  if(a==='sync-login'){
