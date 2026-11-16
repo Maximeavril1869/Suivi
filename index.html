@@ -93,13 +93,14 @@ td,th{padding:4px;border-bottom:1px solid var(--line);text-align:left}
 <div id="offbar" role="status" aria-live="polite" hidden>Hors ligne : tes modifications sont gardées sur cet appareil</div>
 <script>
 const KEY='compte-salaire-v1';
-const APP_VERSION='21';   // identique au numéro de la constante V de sw.js (compte-v21) : à incrémenter ensemble à chaque livraison
+const APP_VERSION='22';   // identique au numéro de la constante V de sw.js (compte-v21) : à incrémenter ensemble à chaque livraison
 const CATS={
  'Revenus':['Salaire','Primes','Remboursements','Intérêts','Autres revenus'],
  'Logement':['Loyer / crédit','Charges','Énergie','Internet / téléphone','Assurance habitation','Travaux / mobilier'],
  'Voiture':['Carburant','Assurance','Entretien / réparations','Péage / parking','Crédit / leasing'],
  'Alimentation':['Courses'],
  'Santé':['Mutuelle','Pharmacie / médecin'],
+ 'Animaux':['Alimentation','Vétérinaire / pharmacie','Assurance / mutuelle','Toilettage / garde','Accessoires / jouets'],
  'Loisirs':['Restaurants / bars','Sorties','Abonnements','Voyages / vacances','Shopping'],
  'Finances':['Épargne','Impôts','Frais bancaires','Crédits'],
  'Divers':['Cadeaux','Imprévus','Non classé']
@@ -112,6 +113,9 @@ const BK_EVERY=[0,3,7,14,30],BK_DEFAULT=7;
 const bkIsDay=v=>typeof v==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(v);
 function bkToday(){const d=new Date(),p=n=>String(n).padStart(2,'0');return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());}   // fonction (pas const) : migrate() s'exécute avant les const plus bas
 function normBk(b){b=b&&typeof b==='object'?b:{};return{since:bkIsDay(b.since)?b.since:null,snooze:bkIsDay(b.snooze)?b.snooze:null,every:BK_EVERY.includes(b.every)?b.every:BK_DEFAULT};}
+/* Tiers toujours en majuscules (espaces nettoyés) : « Leclerc » et « LECLERC » ne font plus deux tiers. */
+function upP(s){return String(s==null?'':s).trim().replace(/\s+/g,' ').toLocaleUpperCase('fr-FR');}
+let payFixed=false;   // vrai si migrate() a changé des tiers : l'enregistrement se fait au démarrage (voir le bloc démarrage)
 function migrate(raw){
  const hadBk=!!(raw&&raw.bk&&typeof raw.bk==='object');
  const o=Object.assign(defaultState(),raw||{});
@@ -122,6 +126,7 @@ function migrate(raw){
  o.accounts.forEach(a=>{if(a.type==='paypal')a.type='courant';});
  o.tx.forEach(t=>{if(!t.acc)t.acc=first;});
  o.rec.forEach(r=>{if(!r.acc)r.acc=first;});
+ [o.tx,o.rec,o.plans,o.rules].forEach(l=>(l||[]).forEach(x=>{if(x&&x.payee){const u=upP(x.payee);if(u!==x.payee){x.payee=u;payFixed=true;}}}));
  if(!Array.isArray(o.shown))o.shown=o.accounts.map(a=>a.id);
  o.shown=o.shown.filter(id=>o.accounts.some(a=>a.id===id));
  o.accounts.forEach(a=>{
@@ -268,8 +273,8 @@ function makePlanItems(total,n,start){
 }
 function autoCat(label,amount,payee){
  const n=norm(label+' '+(payee||''));
- for(const r of S.rules){if(n.includes(r.kw))return{cat:r.cat,sub:r.sub,payee:r.payee||payee||''};}
- return amount>0?{cat:'Revenus',sub:'Autres revenus',payee:payee||''}:{cat:'Divers',sub:'Non classé',payee:payee||''};
+ for(const r of S.rules){if(n.includes(r.kw))return{cat:r.cat,sub:r.sub,payee:upP(r.payee||payee||'')};}
+ return amount>0?{cat:'Revenus',sub:'Autres revenus',payee:upP(payee)}:{cat:'Divers',sub:'Non classé',payee:upP(payee)};
 }
 function kwFrom(label){
  const stop=['CARTE','PAIEMENT','PRLV','VIR','VIREMENT','CB','PRELEVEMENT','SEPA','ACHAT','FACTURE'];
@@ -487,7 +492,7 @@ function txRow(t){
  else if(t.xfer&&o&&o.cnt)base='Remboursement depuis '+esc(accName(o.acc));
  else if(t.xfer)base=(t.amount<0?'Virement vers ':'Virement depuis ')+(o?esc(accName(o.acc)):'?');
  else base=esc(t.cat)+' › '+esc(t.sub);
- const sub2=(t.payee?esc(t.label)+' · ':'')+base+(t.recKey?' · récurrent':'')+(S.accounts.length>1?' · '+esc(accName(t.acc)):'');
+ const sub2=(t.payee&&norm(t.label)!==norm(t.payee)?esc(t.label)+' · ':'')+base+(t.recKey?' · récurrent':'')+(S.accounts.length>1?' · '+esc(accName(t.acc)):'');
  return `<div class="row" data-a="${sel?'togsel':'edittx'}" data-id="${esc(t.id)}">${chk}<div class="d">${t.date.slice(8)}/${t.date.slice(5,7)}</div><div class="m"><div class="l">${esc(t.payee||t.label)}</div><div class="s">${sub2}</div></div><div class="a"><div class="${t.amount<0?'neg':'pos'}">${fmt(t.amount)}</div><div class="s">${fmt(t.bal)}</div></div></div>`;
 }
 function filteredTx(){
@@ -528,7 +533,7 @@ function bulkRuleKw(q,ids,o){
 function openBulk(){
  if(!sel||!sel.size){alert('Aucune ligne sélectionnée.');return;}
  openModal(`<h3>Modifier ${sel.size} ligne(s)</h3><p class="s" style="margin-top:0">Ne remplis que ce que tu veux changer : le reste est conservé tel quel sur chaque ligne.</p>
- <label>Tiers<input id="bk_pay" list="paylist2" autocomplete="off"><datalist id="paylist2">${payOpts()}</datalist></label>
+ <label>Tiers<input id="bk_pay" list="paylist2" autocomplete="off" autocapitalize="characters" style="text-transform:uppercase"><datalist id="paylist2">${payOpts()}</datalist></label>
  <label>Catégorie<select id="bk_cat" data-catsel="bk_sub"><option value="">— inchangée —</option>${catOptions('')}</select></label>
  <label>Sous-catégorie<select id="bk_sub"></select></label>
  <label>Libellé<input id="bk_lab" placeholder="inchangé si vide"></label>
@@ -538,7 +543,7 @@ function openBulk(){
  <div style="margin-top:10px"><button class="danger" style="width:100%" data-a="delbulk">Supprimer ces ${sel.size} ligne(s)</button></div>`);
 }
 function applyBulk(){
- const o={payee:$('bk_pay').value.trim(),cat:$('bk_cat').value,sub:$('bk_sub').value,lab:$('bk_lab').value.trim(),date:$('bk_date').value,acc:$('bk_acc')?$('bk_acc').value:''};
+ const o={payee:upP($('bk_pay').value),cat:$('bk_cat').value,sub:$('bk_sub').value,lab:$('bk_lab').value.trim(),date:$('bk_date').value,acc:$('bk_acc')?$('bk_acc').value:''};
  if(!o.payee&&!o.cat&&!o.lab&&!o.date&&!o.acc){alert('Rien à modifier.');return;}
  const kw=bulkRuleKw(search,sel,o);
  applyBulkTo(sel,o);
@@ -594,10 +599,60 @@ function impHTML(){
  </div><div class="card"><b>Aperçu</b> <span class="s">${res.ok.length} ligne(s) lisible(s), ${res.bad} ignorée(s)</span><table>${prev||'<tr><td>Rien de lisible : vérifie les colonnes.</td></tr>'}</table></div>
  <div class="btns"><button class="ghost" data-a="impcancel">Annuler</button><button class="primary" data-a="doimport" ${res.ok.length?'':'disabled'}>Importer ${res.ok.length} ligne(s)</button></div>`;
 }
+/* ---------- règles de classement (Réglages) ---------- */
+function ruleLines(kw,cat,sub){
+ return S.tx.filter(t=>!t.virtual&&!t.xfer&&norm(t.label+' '+(t.payee||'')).includes(kw)&&(t.cat!==cat||t.sub!==sub));
+}
+function openRule(kw){
+ const r=kw?S.rules.find(x=>x.kw===kw):null;
+ const d=r||{kw:'',cat:'Animaux',sub:CATS['Animaux'][0],payee:''};
+ txCtx={ruleKw:r?r.kw:null};
+ openModal(`<h3>${r?'Modifier la règle':'Nouvelle règle'}</h3>
+ <label>Mot-clé (contenu dans le libellé ou le tiers)<input id="ru_kw" autocomplete="off" autocapitalize="characters" style="text-transform:uppercase" value="${esc(d.kw)}" placeholder="ex. LECLERC PET"></label>
+ <label>Catégorie<select id="ru_cat" data-catsel="ru_sub">${catOptions(d.cat)}</select></label>
+ <label>Sous-catégorie<select id="ru_sub">${subOptions(d.cat,d.sub)}</select></label>
+ <label>Tiers à renseigner (facultatif)<input id="ru_pay" list="paylist" autocomplete="off" autocapitalize="characters" style="text-transform:uppercase" value="${esc(d.payee||'')}"><datalist id="paylist">${payOpts()}</datalist></label>
+ <p class="s">Mot-clé : majuscules, accents et espaces en trop sont ignorés ; 3 lettres minimum.</p>
+ <div class="btns"><button class="ghost" data-a="closem">Annuler</button><button class="primary" data-a="saverule">Enregistrer</button></div>
+ ${r?'<div style="margin-top:10px"><button class="danger" style="width:100%" data-a="delrule" data-kw="'+esc(r.kw)+'">Supprimer cette règle</button></div>':''}`);
+}
+function saveRule(){
+ const kw=norm($('ru_kw').value),cat=$('ru_cat').value,sub=$('ru_sub').value,payee=upP($('ru_pay').value);
+ if(kw.length<3){alert('Mot-clé trop court (3 lettres minimum).');return;}
+ if(!cat||!sub){alert('Choisis une catégorie et une sous-catégorie.');return;}
+ const old=txCtx.ruleKw;
+ if(S.rules.some(r=>r.kw===kw&&r.kw!==old)){alert('Une règle existe déjà pour « '+kw+' ».');return;}
+ const rule={kw,cat,sub,payee};
+ const i=old?S.rules.findIndex(r=>r.kw===old):-1;
+ if(i>=0)S.rules[i]=rule;else S.rules.push(rule);
+ save();
+ const hit=ruleLines(kw,cat,sub);
+ if(!hit.length){closeModal();render();alert('Règle enregistrée. Aucune ligne existante à reclasser.');return;}
+ txCtx={ruleKw:kw,hit:hit.map(t=>t.id)};
+ openRulePreview(rule,hit);
+}
+function openRulePreview(rule,hit){
+ const rows=hit.slice().sort((a,b)=>a.date<b.date?1:a.date>b.date?-1:0).map(t=>`<label class="row" style="display:flex;gap:10px;align-items:center;color:var(--tx)"><input type="checkbox" class="ru_chk" value="${esc(t.id)}" checked style="width:22px;height:22px;margin:0;flex:none"><div class="m"><div class="l">${esc(t.payee||t.label)}</div><div class="s">${frDate(t.date)} · ${esc(t.cat)} › ${esc(t.sub)} → <b>${esc(rule.cat)} › ${esc(rule.sub)}</b></div></div><div class="a ${t.amount<0?'neg':'pos'}">${fmt(t.amount)}</div></label>`).join('');
+ openModal(`<h3>Règle enregistrée</h3>
+ <p class="s" style="margin-top:0">${hit.length} ligne(s) existante(s) contiennent « ${esc(rule.kw)} » et ne sont pas encore en ${esc(rule.cat)} › ${esc(rule.sub)}. Décoche celles à laisser telles quelles.</p>
+ <div class="card" style="max-height:50vh;overflow:auto">${rows}</div>
+ <div class="btns" style="margin-top:12px"><button class="ghost" data-a="rulenoapply">Ne rien reclasser</button><button class="primary" data-a="ruleapply">Reclasser</button></div>`);
+}
+function applyRulePreview(){
+ const r=S.rules.find(x=>x.kw===txCtx.ruleKw);
+ const ids=new Set([...document.querySelectorAll('.ru_chk:checked')].map(c=>c.value));
+ if(r&&ids.size){S.tx.forEach(t=>{if(!ids.has(t.id))return;t.cat=r.cat;t.sub=r.sub;if(r.payee&&!t.payee)t.payee=r.payee;});save();}
+ closeModal();render();
+}
+function moveRule(kw,dir){
+ const i=S.rules.findIndex(r=>r.kw===kw),j=i+dir;
+ if(i<0||j<0||j>=S.rules.length)return;
+ const x=S.rules[i];S.rules[i]=S.rules[j];S.rules[j]=x;save();render();
+}
 function setHTML(){
  const budOpts=Object.keys(CATS).filter(c=>c!=='Revenus').map(c=>`<option value="${esc(c)}">${esc(c)} (toute la catégorie)</option>`+CATS[c].map(s=>`<option value="${esc(c+'|'+s)}">${esc(c)} › ${esc(s)}</option>`).join('')).join('');
  const buds=Object.keys(S.budgets).map(k=>`<div class="row"><div class="m">${esc(k.replace('|',' › '))}</div><div>${fmt(S.budgets[k])}</div><button class="ghost small" data-a="delbudget" data-key="${esc(k)}">Retirer</button></div>`).join('')||'<p class="mut">Aucun budget.</p>';
- const rules=S.rules.map(r=>`<div class="row"><div class="m"><div class="l">${esc(r.kw)}</div><div class="s">${esc(r.cat)} › ${esc(r.sub)}${r.payee?' · '+esc(r.payee):''}</div></div><button class="ghost small" data-a="delrule" data-kw="${esc(r.kw)}">Retirer</button></div>`).join('')||'<p class="mut">Aucune règle. Elles se créent quand tu corriges une catégorie.</p>';
+ const rules=S.rules.map((r,i)=>`<div class="row" data-a="editrule" data-kw="${esc(r.kw)}"><div class="m"><div class="l">${esc(r.kw)}</div><div class="s">${esc(r.cat)} › ${esc(r.sub)}${r.payee?' · '+esc(r.payee):''}</div></div><div style="display:flex;gap:6px"><button class="ghost small" data-a="ruleup" data-kw="${esc(r.kw)}" aria-label="Monter" ${i===0?'disabled':''}>▲</button><button class="ghost small" data-a="ruledown" data-kw="${esc(r.kw)}" aria-label="Descendre" ${i===S.rules.length-1?'disabled':''}>▼</button></div></div>`).join('')||'<p class="mut">Aucune règle. Ajoute-en une, ou elles se créent quand tu corriges une catégorie.</p>';
  const accRow=a=>`<div class="row" data-a="editacc" data-id="${esc(a.id)}"><div class="m"><div class="l">${esc(a.name)}</div><div class="s">${esc(ACC_TYPES[a.type]||a.type)}${a.cash?'':' · hors reste à vivre'}${a.type==='differe'&&a.debitAcc?' · prélevée sur '+esc(accName(a.debitAcc))+' le '+a.debitDay+' · en attente '+fmt(Math.max(0,-accBalance(a.id,today()))):''}${a.type==='credit'?(()=>{const c=creditInfo(a);return ' · plafond '+fmt(c.lim)+' · dû '+fmt(c.due)+' · disponible '+fmt(c.avail);})():''}</div></div><div class="a ${accBalance(a.id)<0?'neg':''}">${fmt(accBalance(a.id))}</div></div>`;
 const grp=[];S.accounts.forEach(a=>{const g=a.group||'';let e=grp.find(x=>x.g===g);if(!e){e={g,l:[]};grp.push(e);}e.l.push(a);});
  const multi=grp.length>1||(grp[0]&&grp[0].g);
@@ -605,7 +660,7 @@ const grp=[];S.accounts.forEach(a=>{const g=a.group||'';let e=grp.find(x=>x.g===
  return `<h2>Réglages</h2>
  <div class="card"><b>Comptes</b><p class="s" style="margin-top:2px">Touche un compte pour le modifier ou caler son solde sur celui de ta banque.</p>${accs}<div style="margin-top:10px"><button class="primary" data-a="newacc">Ajouter un compte</button></div></div>
  <div class="card"><b>Budgets mensuels</b>${buds}<div style="margin-top:10px"><label>Catégorie<select id="b_key">${budOpts}</select></label><label>Plafond par mois (€)<input id="b_amt" inputmode="decimal"></label><button class="primary" data-a="addbudget">Ajouter</button></div></div>
- <div class="card"><b>Règles de classement automatique</b>${rules}</div>
+ <div class="card"><b>Règles de classement automatique</b><p class="s" style="margin-top:2px">Une ligne dont le libellé ou le tiers contient le mot-clé est classée dans la catégorie de la règle. <b>La première règle de la liste qui correspond l'emporte</b> : mets les mots-clés précis (« LECLERC PET ») au-dessus des généraux (« LECLERC »). Touche une règle pour la modifier.</p>${rules}<div style="margin-top:10px"><button class="primary" data-a="newrule">Ajouter une règle</button></div></div>
  <div class="card"><b>Synchronisation</b><div id="sync-box">${syncBoxHTML()}</div></div>
  <div class="card"><b>Sauvegarde</b><p class="s">${bkInfoHTML()} Stockage persistant : ${persisted===true?'oui':persisted===false?'non accordé':'inconnu'}.</p>
  <label>Me rappeler quand des modifications ne sont pas sauvegardées depuis<select id="bk_every">${BK_EVERY.map(n=>`<option value="${n}"${n===S.bk.every?' selected':''}>${n===0?'Jamais (pas de rappel)':n+' jour'+(n>1?'s':'')}</option>`).join('')}</select></label>
@@ -641,8 +696,8 @@ function openTx(id,pre,recKey){
  <div class="seg"><label><input type="radio" name="ty" value="dep" ${dep?'checked':''}>Dépense</label><label><input type="radio" name="ty" value="rec" ${dep?'':'checked'}>Recette</label></div>
  <label>Montant (€)<input id="f_amt" inputmode="decimal" value="${abs}"></label>
  <label>Date<input id="f_date" type="date" value="${esc(d.date)}"></label>
- <label>Libellé<input id="f_lab" value="${esc(d.label)}"></label>
- <label>Tiers<input id="f_pay" list="paylist" autocomplete="off" value="${esc(d.payee||'')}"><datalist id="paylist">${payOpts()}</datalist></label>
+ <label>Tiers<input id="f_pay" list="paylist" autocomplete="off" autocapitalize="characters" style="text-transform:uppercase" value="${esc(d.payee||'')}"><datalist id="paylist">${payOpts()}</datalist></label>
+ <label>Libellé (facultatif : le tiers sert de libellé)<input id="f_lab" value="${esc(d.label===d.payee?'':d.label)}"></label>
  ${accSelect('f_acc',(t&&t.acc)||(pre&&pre.acc)||defAcc())}
  ${catPart}
  <div class="btns"><button class="ghost" data-a="closem">Annuler</button><button class="primary" data-a="savetx">Enregistrer</button></div>
@@ -654,8 +709,8 @@ function saveTx(){
  const a=parseAmount($('f_amt').value);
  if(!(a>0)){alert('Montant invalide.');return;}
  const date=$('f_date').value;if(!date){alert('Date manquante.');return;}
- const label=$('f_lab').value.trim()||'Sans libellé';
- const payee=$('f_pay').value.trim();
+ const payee=upP($('f_pay').value);
+ const label=$('f_lab').value.trim()||payee||'Sans libellé';
  const prevTx=txCtx.id?S.tx.find(x=>x.id===txCtx.id):null;
  const accId=$('f_acc')?$('f_acc').value:((prevTx&&prevTx.acc)||defAcc());
  const isX=!!txCtx.xfer,pure=isX&&!txCtx.cnt;
@@ -743,7 +798,7 @@ function openPlan(id){
  const lock=planKeys();
  txCtx={pid:pl?pl.id:null};
  const top=`<label>Libellé<input id="pl_lab" value="${esc(d.label)}" placeholder="ex. Canapé"></label>
- <label>Tiers<input id="pl_pay" list="paylist" autocomplete="off" value="${esc(d.payee||'')}"><datalist id="paylist">${payOpts()}</datalist></label>
+ <label>Tiers<input id="pl_pay" list="paylist" autocomplete="off" autocapitalize="characters" style="text-transform:uppercase" value="${esc(d.payee||'')}"><datalist id="paylist">${payOpts()}</datalist></label>
  ${accSelect('pl_acc',d.acc)}
  <label>Catégorie<select id="pl_cat" data-catsel="pl_sub">${catOptions(d.cat)}</select></label>
  <label>Sous-catégorie<select id="pl_sub">${subOptions(d.cat,d.sub)}</select></label>
@@ -765,7 +820,7 @@ function openPlan(id){
 }
 function savePlan(){
  const label=$('pl_lab').value.trim();if(!label){alert('Libellé manquant.');return;}
- const common={label,payee:$('pl_pay').value.trim(),acc:$('pl_acc')?$('pl_acc').value:defAcc(),cat:$('pl_cat').value,sub:$('pl_sub').value,match:$('pl_match').value.trim()};
+ const common={label,payee:upP($('pl_pay').value),acc:$('pl_acc')?$('pl_acc').value:defAcc(),cat:$('pl_cat').value,sub:$('pl_sub').value,match:$('pl_match').value.trim()};
  if(txCtx.pid){
   const pl=S.plans.find(x=>x.id===txCtx.pid);if(!pl)return;
   const lock=planKeys();
@@ -951,7 +1006,14 @@ function act(a,ds){
  else if(a==='bk-later'){S.bk.snooze=bkPlus1(today());save(true);render();}
  else if(a==='impcancel'){imp=null;render();}
  else if(a==='doimport')doImport();
- else if(a==='delrule'){S.rules=S.rules.filter(r=>r.kw!==ds.kw);save();render();}
+ else if(a==='newrule')openRule(null);
+ else if(a==='editrule')openRule(ds.kw);
+ else if(a==='saverule')saveRule();
+ else if(a==='ruleapply')applyRulePreview();
+ else if(a==='rulenoapply'){closeModal();render();}
+ else if(a==='ruleup')moveRule(ds.kw,-1);
+ else if(a==='ruledown')moveRule(ds.kw,1);
+ else if(a==='delrule'){if(confirm('Supprimer cette règle ? Les lignes déjà classées ne changent pas.')){S.rules=S.rules.filter(r=>r.kw!==ds.kw);save();closeModal();render();}}
  else if(a==='delbudget'){delete S.budgets[ds.key];save();render();}
  else if(a==='addbudget'){const v=parseAmount($('b_amt').value);if(!(v>0)){alert('Montant invalide.');return;}S.budgets[$('b_key').value]=v;save();render();}
  else if(a==='wipe'){if(confirm('Effacer toutes les données ?')&&confirm('Dernière confirmation : action irréversible.')){S=defaultState();save();render();}}
@@ -1342,6 +1404,7 @@ if(typeof document!=='undefined'&&document.getElementById('app')){
  if(navigator.storage&&navigator.storage.persist){navigator.storage.persist().then(ok=>{persisted=ok;}).catch(()=>{});}
  if('serviceWorker' in navigator&&location.protocol.indexOf('http')===0){navigator.serviceWorker.register('sw.js').catch(()=>{});}
  syncLoad();
+ if(payFixed){save(true);}   // tiers passés en majuscules par la migration : à enregistrer (et synchroniser) une fois
  render();
  syncStart();
 }

@@ -13,6 +13,7 @@ Application de suivi de budget **locale d'abord** : une PWA sans framework et sa
 | `LICENSE`, `README.md` | Mention « Tous droits réservés » |
 | `tests/test_sync.py` | Tests de la synchronisation (faux serveur, deux appareils simulés) ; voir `tests/README.md` |
 | `tests/test_rappel_et_hors_ligne.py` | Tests du rappel de sauvegarde partagé et de la bannière « Hors ligne » |
+| `tests/test_regles_et_tiers.py` | Tests de la catégorie Animaux, des tiers en majuscules, du libellé facultatif et des règles dans Réglages |
 | `JOURNAL.md` | Carnet de bord du projet |
 | `ARCHITECTURE.md` | Ce document |
 
@@ -47,14 +48,16 @@ Contenu de l'état `S` :
 | `tx` | Lignes réelles : date, libellé, montant, catégorie, sous-catégorie, tiers, compte, lien de virement, clé de récurrence |
 | `rec` | Récurrences : fréquence, jour, début/fin, montant (avec changements datés), compte, mot-clé CSV |
 | `plans` | Paiements en plusieurs fois : liste d'échéances mensuelles |
-| `rules` | Règles de classement automatique (mot-clé vers catégorie) |
+| `rules` | Règles de classement automatique (mot-clé, catégorie, sous-catégorie, tiers facultatif), **dans l'ordre de priorité** : la première qui correspond l'emporte |
 | `budgets` | Budgets par catégorie ou sous-catégorie |
 | `csvMaps` | Correspondance de colonnes mémorisée par format de CSV |
 | `skips` | Échéances ignorées |
 | `lastExport` | Date de la dernière sauvegarde |
 | `bk` | État du rappel de sauvegarde : `since` (date de la première modification non sauvegardée), `snooze` (rappel reporté jusqu'à), `every` (délai en jours : 0, 3, 7, 14 ou 30 ; 7 par défaut) |
 
-Catégories (constante `CATS`) : Revenus, Logement, Voiture, Alimentation, Santé, Loisirs, Finances, Divers, chacune avec ses sous-catégories. Les restaurants et bars sont volontairement dans Loisirs.
+Catégories (constante `CATS`) : Revenus, Logement, Voiture, Alimentation, Santé, Animaux, Loisirs, Finances, Divers, chacune avec ses sous-catégories. Les restaurants et bars sont volontairement dans Loisirs.
+
+**Tiers** : toujours en majuscules (`upP`), à la saisie et à l'import ; `migrate()` met en majuscules ceux déjà présents (lignes, récurrences, paiements, règles) et, si quelque chose a changé (`payFixed`), l'app enregistre une fois au démarrage. Le **libellé** est le texte de la banque à l'import (sert aux règles et aux doublons) ; en saisie manuelle il est facultatif et prend le tiers s'il est vide.
 
 ## Interface
 
@@ -79,7 +82,8 @@ Les formulaires sont des modales (`openTx`, `openAcc`, `openRec`, `openPlan`, `o
 | Récurrences | `occ` (dates d'une récurrence dans un mois), `amountAt` (montant à une date), `dueItems` / `dueRange` (échéances non encore validées ni ignorées), `changeAmount` (nouveau montant à partir d'une date) |
 | Paiements en plusieurs fois | `makePlanItems`, `planStats`, `planKeys` |
 | Débit différé | `debitDates`, `creditInfo` (cartes et crédits) |
-| Classement | `autoCat`, `kwFrom`, `linkRec` (rapprochement d'une ligne avec une récurrence) |
+| Classement | `autoCat` (première règle correspondante), `kwFrom`, `linkRec` (rapprochement d'une ligne avec une récurrence) |
+| Règles (Réglages) | `openRule`, `saveRule`, `ruleLines` (lignes existantes concernées), `openRulePreview` / `applyRulePreview` (aperçu à cocher avant reclassement), `moveRule` (ordre) |
 | Import CSV | `parseCSV`, `parseAmount`, `parseDate`, `guessCol`, `impParse`, `doImport`, `onFile` |
 | Période | `range`, `setAnchor`, `shiftPeriod`, `periodLabel` (jour, semaine, mois, année) |
 
@@ -88,7 +92,7 @@ Cycle d'une échéance : la récurrence génère une échéance « à valider »
 ## Mise à jour et déploiement
 
 - Hébergement : GitHub Pages à partir du dépôt (branche par défaut `main`).
-- Le service worker (`sw.js`) a une version de cache (constante `V`, actuellement `compte-v21`). **À chaque modification publiée, incrémenter cette version** pour que l'iPhone récupère la nouvelle app, **et la constante `APP_VERSION` de `index.html`** (même numéro : `21` pour `compte-v21`), affichée en bas de Réglages (« Mon Compte · version 21 ») pour vérifier quelle version tourne sur l'appareil.
+- Le service worker (`sw.js`) a une version de cache (constante `V`, actuellement `compte-v22`). **À chaque modification publiée, incrémenter cette version** pour que l'iPhone récupère la nouvelle app, **et la constante `APP_VERSION` de `index.html`** (même numéro : `22` pour `compte-v22`), affichée en bas de Réglages (« Mon Compte · version 22 ») pour vérifier quelle version tourne sur l'appareil.
 - Aucune étape de build : modifier `index.html`, commiter, pousser.
 
 ## Synchronisation chiffrée

@@ -3,7 +3,7 @@
 Journal des opérations réalisées sur le projet, à relire pour savoir où il en est.
 Les entrées les plus récentes sont en haut. À chaque intervention, ajouter une entrée datée.
 
-## État actuel (2026-11-12, soir)
+## État actuel (2026-11-16)
 
 - App PWA locale d'abord (un seul fichier `index.html`), publiée sur GitHub Pages, utilisée sur iPhone et iPad. **Synchronisation chiffrée** (validée sur appareils le 2026-11-12), **rappel de sauvegarde partagé** (même logique que Plan du jour) et **bannière « Hors ligne »** ajoutés le 2026-11-12 (à valider sur iPhone et iPad). Service worker en version `compte-v21` (numéro affiché en bas de Réglages).
 - Plan en 3 étapes entièrement présent dans le code : comptes multiples + virements, paiements en plusieurs fois, emprunts / livrets / cartes.
@@ -33,6 +33,14 @@ Les entrées les plus récentes sont en haut. À chaque intervention, ajouter un
 - Service worker `compte-v20`. Tests : `tests/test_rappel_et_hors_ligne.py` (44 vérifications au départ, 50 ensuite) ; `tests/test_sync.py` inchangé (57 vérifications, passent).
 - Reste à valider sur iPhone et iPad : rappel (sauvegarde sur un appareil, ~10 s, rappel disparu sur l'autre) ; bannière (mode avion : apparition immédiate ; retour du réseau : disparition en quelques secondes).
 - Non testé en conditions réelles : le vrai service Supabase (faux serveur uniquement) et le comportement exact d'iOS en Wi-Fi sans internet.
+
+## 2026-11-16 — Catégorie Animaux, tiers en majuscules, règles gérées dans Réglages (version 22)
+
+- Demande : pas de catégorie pour les animaux ; pouvoir ajouter des règles de classement directement dans Réglages ; éviter la multiplication des tiers (majuscules forcées, tiers existants proposés) ; question sur l'utilité du libellé.
+- Décisions de l'utilisateur : sous-catégories d'Animaux validées telles que proposées ; à la création d'une règle, un **aperçu des lignes concernées** avec validation avant reclassement ; ajouter, modifier et réordonner les règles ; mot-clé « contient » suffisant pour l'instant ; passage de tous les tiers existants en majuscules ; suggestions de tiers pendant la frappe suffisantes (pas de liste déroulante dédiée).
+- Fait : catégorie **Animaux** (Alimentation, Vétérinaire / pharmacie, Assurance / mutuelle, Toilettage / garde, Accessoires / jouets) ; **tiers en majuscules** à la saisie (ligne, modification groupée, paiement en plusieurs fois, règles, import CSV) et migration des tiers existants (enregistrée une fois au démarrage, donc synchronisée) ; **libellé facultatif** en saisie manuelle (le tiers en tient lieu, et n'est plus affiché deux fois) ; Réglages › Règles : bouton « Ajouter une règle », touche une règle pour la modifier ou la supprimer, flèches ▲ ▼ pour l'ordre (la première règle qui correspond l'emporte), aperçu à cocher avant reclassement des lignes existantes. Service worker `compte-v22`.
+- Tests : `tests/test_regles_et_tiers.py` (30 vérifications) ; les deux anciennes suites passent toujours (57 et 50).
+- Point de vigilance : en corrigeant une ligne, l'app propose toujours de créer une règle à partir du tiers (ex. « LECLERC → Animaux »). Pour un supermarché qui vend de tout, répondre Non, ou créer à la main une règle plus précise (« LECLERC PET »).
 
 ## 2026-11-12 — La dernière sauvegarde est partagée entre appareils
 
