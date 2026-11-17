@@ -16,7 +16,7 @@
 @media(prefers-color-scheme:dark){:root{--bg:#0b1220;--card:#131c2e;--tx:#e5e7eb;--mut:#94a3b8;--line:#1f2a40;--pri:#2dd4bf;--pri2:#0f3d3a;--red:#f87171;--grn:#4ade80;--warn:#fbbf24}}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.4 -apple-system,system-ui,sans-serif}
-#app{max-width:640px;margin:0 auto;padding:calc(env(safe-area-inset-top) + 12px) 14px calc(90px + env(safe-area-inset-bottom))}
+#app{max-width:640px;margin:0 auto;padding:calc(env(safe-area-inset-top) + 32px) 14px calc(90px + env(safe-area-inset-bottom))}
 h2{margin:6px 0 10px;font-size:22px}
 h3{margin:0 0 10px}
 .mut{color:var(--mut)}
@@ -100,7 +100,7 @@ td,th{padding:4px;border-bottom:1px solid var(--line);text-align:left}
 <div id="offbar" role="status" aria-live="polite" hidden>Hors ligne : tes modifications sont gardées sur cet appareil</div>
 <script>
 const KEY='compte-salaire-v1';
-const APP_VERSION='24';   // identique au numéro de la constante V de sw.js (compte-v24) : à incrémenter ensemble à chaque livraison
+const APP_VERSION='25';   // identique au numéro de la constante V de sw.js (compte-v25) : à incrémenter ensemble à chaque livraison
 const CATS={
  'Revenus':['Salaire','Primes','Remboursements','Intérêts','Autres revenus'],
  'Logement':['Loyer / crédit','Charges','Énergie','Internet / téléphone','Assurance habitation','Travaux / mobilier'],

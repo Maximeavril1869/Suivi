@@ -100,7 +100,7 @@ Cycle d'une échéance : la récurrence génère une échéance « à valider »
 ## Mise à jour et déploiement
 
 - Hébergement : GitHub Pages à partir du dépôt (branche par défaut `main`).
-- Le service worker (`sw.js`) a une version de cache (constante `V`, actuellement `compte-v24`). **À chaque modification publiée, incrémenter cette version** pour que l'iPhone récupère la nouvelle app, **et la constante `APP_VERSION` de `index.html`** (même numéro : `22` pour `compte-v22`), affichée en bas de Réglages (« Mon Compte · version 22 ») pour vérifier quelle version tourne sur l'appareil.
+- Le service worker (`sw.js`) a une version de cache (constante `V`, actuellement `compte-v25`). **À chaque modification publiée, incrémenter cette version** pour que l'iPhone récupère la nouvelle app, **et la constante `APP_VERSION` de `index.html`** (même numéro : `22` pour `compte-v22`), affichée en bas de Réglages (« Mon Compte · version 22 ») pour vérifier quelle version tourne sur l'appareil.
 - Aucune étape de build : modifier `index.html`, commiter, pousser.
 
 ## Synchronisation chiffrée

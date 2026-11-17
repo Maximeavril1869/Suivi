@@ -147,9 +147,20 @@ def test_synchro_ne_replie_pas(browser):
     check('le menu de synchronisation reste ouvert', pg.is_visible('#sync-box') and etat_replis(pg) == avant, etat_replis(pg))
 
 
+def test_marge_haute(browser):
+    print('Haut de page : les puces de comptes ne sont pas collées au bord')
+    pg = device(browser, FauxSupabase())
+    comptes_demo(pg)
+    for v in ['home', 'tx', 'rec']:
+        pg.click('[data-a=nav][data-v=%s]' % v)
+        y = pg.evaluate("() => document.querySelector('.chips').getBoundingClientRect().top")
+        check('vue %s : puces à au moins 30 px du haut de l’écran' % v, y >= 30, y)
+
+
 def main():
     with sync_playwright() as p:
         browser = p.chromium.launch()
+        test_marge_haute(browser)
         test_cartes(browser)
         test_organismes(browser)
         test_sans_organisme(browser)
