@@ -5,7 +5,7 @@ Les entrées les plus récentes sont en haut. À chaque intervention, ajouter un
 
 ## État actuel (2026-11-16)
 
-- App PWA locale d'abord (un seul fichier `index.html`), publiée sur GitHub Pages, utilisée sur iPhone et iPad. **Synchronisation chiffrée** (validée sur appareils le 2026-11-12), **rappel de sauvegarde partagé** (même logique que Plan du jour) et **bannière « Hors ligne »** ajoutés le 2026-11-12 (à valider sur iPhone et iPad). Service worker en version `compte-v21` (numéro affiché en bas de Réglages).
+- App PWA locale d'abord (un seul fichier `index.html`), publiée sur GitHub Pages, utilisée sur iPhone et iPad. **Synchronisation chiffrée** (validée sur appareils le 2026-11-12), **rappel de sauvegarde partagé** (même logique que Plan du jour) et **bannière « Hors ligne »** ajoutés le 2026-11-12 (à valider sur iPhone et iPad). Service worker en version `compte-v23` (numéro affiché en bas de Réglages). **Réglages : menus repliables** depuis le 2026-11-17 (à valider sur iPhone et iPad).
 - Plan en 3 étapes entièrement présent dans le code : comptes multiples + virements, paiements en plusieurs fois, emprunts / livrets / cartes.
 - Reste à faire : tester l'import CSV avec l'export réel de la banque (point en attente depuis la première version) ; valider la synchronisation sur appareil.
 - Aucune donnée réelle n'est stockée dans le dépôt.
@@ -17,6 +17,15 @@ Les entrées les plus récentes sont en haut. À chaque intervention, ajouter un
 - Service worker en version `compte-v17`.
 - Reste à faire : tester l'import CSV avec l'export réel de la banque (point en attente depuis la première version).
 - Aucune donnée réelle n'est stockée dans le dépôt.
+
+## 2026-11-17 — Réglages : menus repliables, groupes d'organismes repliables (version 23)
+
+- Demande : dans Réglages, des menus qui se replient, et pareil pour les organismes.
+- Lecture retenue : chaque carte de Réglages se replie (touche sur le titre, chevron à droite), et dans la carte Comptes chaque organisme (Caisse d'épargne, etc.) se replie aussi, son solde restant visible dans le titre.
+- Choix faits sans question (modifiables) : par défaut Comptes et les organismes sont ouverts, les autres cartes (budgets, règles, synchronisation, sauvegarde, zone dangereuse) repliées ; l'état est mémorisé **par appareil** (iPhone et iPad indépendants, rien dans les données synchronisées ni dans l'export).
+- Fait : `foldCard` et l'objet `FOLD` (`localStorage`, clé `compte-replis`) dans `index.html` ; `<details>` natifs. Service worker `compte-v23`, `APP_VERSION = '23'`.
+- Tests : `tests/test_replis.py` (28 vérifications) ; `go_settings` de `tests/test_sync.py` déplie désormais toutes les cartes pour que les anciens tests atteignent leurs champs ; les trois anciennes suites passent toujours (57, 50, 30).
+- Reste à valider sur iPhone et iPad.
 
 ## 2026-11-12 (soir, suite) — Version affichée, rappel sur toutes les vues
 

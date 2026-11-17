@@ -14,6 +14,7 @@ Application de suivi de budget **locale d'abord** : une PWA sans framework et sa
 | `tests/test_sync.py` | Tests de la synchronisation (faux serveur, deux appareils simulés) ; voir `tests/README.md` |
 | `tests/test_rappel_et_hors_ligne.py` | Tests du rappel de sauvegarde partagé et de la bannière « Hors ligne » |
 | `tests/test_regles_et_tiers.py` | Tests de la catégorie Animaux, des tiers en majuscules, du libellé facultatif et des règles dans Réglages |
+| `tests/test_replis.py` | Tests des menus repliables de Réglages (cartes et groupes d'organismes) |
 | `JOURNAL.md` | Carnet de bord du projet |
 | `ARCHITECTURE.md` | Ce document |
 
@@ -69,7 +70,7 @@ Navigation en bas, 5 vues (objet `VIEWS`) :
 | Lignes | `linesHTML` | Liste filtrable, sélection multiple et modification groupée |
 | Récurrent | `recHTML` | Échéances à valider, récurrences, paiements en plusieurs fois |
 | Import | `impHTML` | Import CSV avec choix des colonnes |
-| Réglages | `setHTML` | Comptes, budgets, règles, sauvegarde et restauration |
+| Réglages | `setHTML` | Menus repliables : Comptes (groupés par organisme), budgets, règles, synchronisation, sauvegarde et restauration, zone dangereuse |
 
 Les formulaires sont des modales (`openTx`, `openAcc`, `openRec`, `openPlan`, `openXfer`, `openBulk`), enregistrées par les fonctions `save…`. Un seul gestionnaire d'événements, `act()`, répartit les actions via les attributs `data-a`.
 
@@ -89,10 +90,17 @@ Les formulaires sont des modales (`openTx`, `openAcc`, `openRec`, `openPlan`, `o
 
 Cycle d'une échéance : la récurrence génère une échéance « à valider » ; **Valider** ouvre une ligne pré-remplie que l'on confirme, **Ignorer** l'ajoute à `skips`. Dans les deux cas elle disparaît de la liste (clé `recKey` ou `skips`).
 
+## Menus repliables de Réglages
+
+- Chaque carte de Réglages est un `<details class="card fold">` produit par `foldCard(clé, titre, contenu, ouvertParDéfaut)`. Dans la carte Comptes, chaque organisme (champ « Organisme / groupe » d'un compte) est un `<details class="fold grp">` de clé `g:<nom>` ; le titre du groupe garde son solde. Sans organisme, ou avec un seul groupe sans nom, la liste des comptes reste plate comme avant.
+- Clés des cartes : `comptes`, `budgets`, `regles`, `sync`, `sauvegarde`, `danger`. Par défaut : Comptes et les groupes d'organismes ouverts, le reste replié.
+- **L'état ouvert / replié est propre à l'appareil** : objet `FOLD` dans le `localStorage` (clé `compte-replis`), hors de `S`, donc jamais synchronisé ni exporté. Il est mis à jour par l'événement `toggle` (écouteur global en capture, car cet événement ne remonte pas) et relu à chaque `render()`, ce qui évite qu'une reconstruction de l'écran referme un menu.
+- L'ouverture d'un menu n'est pas une modification : aucun appel à `save()`, donc pas de rappel de sauvegarde ni d'envoi vers la synchronisation.
+
 ## Mise à jour et déploiement
 
 - Hébergement : GitHub Pages à partir du dépôt (branche par défaut `main`).
-- Le service worker (`sw.js`) a une version de cache (constante `V`, actuellement `compte-v22`). **À chaque modification publiée, incrémenter cette version** pour que l'iPhone récupère la nouvelle app, **et la constante `APP_VERSION` de `index.html`** (même numéro : `22` pour `compte-v22`), affichée en bas de Réglages (« Mon Compte · version 22 ») pour vérifier quelle version tourne sur l'appareil.
+- Le service worker (`sw.js`) a une version de cache (constante `V`, actuellement `compte-v23`). **À chaque modification publiée, incrémenter cette version** pour que l'iPhone récupère la nouvelle app, **et la constante `APP_VERSION` de `index.html`** (même numéro : `22` pour `compte-v22`), affichée en bas de Réglages (« Mon Compte · version 22 ») pour vérifier quelle version tourne sur l'appareil.
 - Aucune étape de build : modifier `index.html`, commiter, pousser.
 
 ## Synchronisation chiffrée

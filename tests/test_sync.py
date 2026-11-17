@@ -141,6 +141,8 @@ def seed(pg, txs):
 
 def go_settings(pg):
     pg.click('[data-a=nav][data-v=set]')
+    # les menus de Réglages sont repliables : on les déplie tous pour que les tests atteignent leurs champs
+    pg.evaluate("() => { ['comptes', 'budgets', 'regles', 'sync', 'sauvegarde', 'danger'].forEach((k) => { FOLD[k] = true; }); render(); }")
 
 
 def labels(pg):

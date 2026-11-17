@@ -55,6 +55,13 @@ details{border-bottom:1px solid var(--line);padding:8px 0}
 details:last-child{border-bottom:0}
 summary{list-style:none;cursor:pointer}
 summary::-webkit-details-marker{display:none}
+.fold>summary{display:flex;justify-content:space-between;align-items:center;gap:8px;font-weight:700;min-height:24px}
+.fold>summary::after{content:'▾';color:var(--mut);transition:transform .15s}
+.fold:not([open])>summary::after{transform:rotate(-90deg)}
+.fold[open]>summary{margin-bottom:6px}
+.fold.grp{margin:14px 0 2px}
+.fold.grp>summary{font-weight:600}
+.fold.grp>summary .s{margin-left:auto}
 .sr{display:flex;justify-content:space-between;font-weight:600}
 .sub{display:flex;justify-content:space-between;padding:4px 0 0 12px;color:var(--mut);font-size:14px}
 .fab{position:fixed;right:18px;bottom:calc(76px + env(safe-area-inset-bottom));width:56px;height:56px;border-radius:50%;border:0;background:var(--pri);color:#fff;font-size:30px;box-shadow:0 4px 12px rgba(0,0,0,.3)}
@@ -93,7 +100,7 @@ td,th{padding:4px;border-bottom:1px solid var(--line);text-align:left}
 <div id="offbar" role="status" aria-live="polite" hidden>Hors ligne : tes modifications sont gardées sur cet appareil</div>
 <script>
 const KEY='compte-salaire-v1';
-const APP_VERSION='22';   // identique au numéro de la constante V de sw.js (compte-v21) : à incrémenter ensemble à chaque livraison
+const APP_VERSION='23';   // identique au numéro de la constante V de sw.js (compte-v23) : à incrémenter ensemble à chaque livraison
 const CATS={
  'Revenus':['Salaire','Primes','Remboursements','Intérêts','Autres revenus'],
  'Logement':['Loyer / crédit','Charges','Énergie','Internet / téléphone','Assurance habitation','Travaux / mobilier'],
@@ -649,6 +656,12 @@ function moveRule(kw,dir){
  if(i<0||j<0||j>=S.rules.length)return;
  const x=S.rules[i];S.rules[i]=S.rules[j];S.rules[j]=x;save();render();
 }
+/* Menus repliables de Réglages : l'état (ouvert / replié) est propre à l'appareil, hors des données synchronisées */
+const FOLD_KEY='compte-replis';
+let FOLD={};try{FOLD=JSON.parse(localStorage.getItem(FOLD_KEY))||{};}catch(e){FOLD={};}
+const foldOpen=(k,def)=>Object.prototype.hasOwnProperty.call(FOLD,k)?!!FOLD[k]:def;
+const foldCard=(k,title,body,def)=>`<details class="card fold" data-fold="${esc(k)}"${foldOpen(k,def)?' open':''}><summary><b>${title}</b></summary>${body}</details>`;
+document.addEventListener('toggle',e=>{const d=e.target;if(!d||!d.dataset||!d.dataset.fold)return;if(FOLD[d.dataset.fold]===d.open)return;FOLD[d.dataset.fold]=d.open;try{localStorage.setItem(FOLD_KEY,JSON.stringify(FOLD));}catch(x){}},true);
 function setHTML(){
  const budOpts=Object.keys(CATS).filter(c=>c!=='Revenus').map(c=>`<option value="${esc(c)}">${esc(c)} (toute la catégorie)</option>`+CATS[c].map(s=>`<option value="${esc(c+'|'+s)}">${esc(c)} › ${esc(s)}</option>`).join('')).join('');
  const buds=Object.keys(S.budgets).map(k=>`<div class="row"><div class="m">${esc(k.replace('|',' › '))}</div><div>${fmt(S.budgets[k])}</div><button class="ghost small" data-a="delbudget" data-key="${esc(k)}">Retirer</button></div>`).join('')||'<p class="mut">Aucun budget.</p>';
@@ -656,16 +669,16 @@ function setHTML(){
  const accRow=a=>`<div class="row" data-a="editacc" data-id="${esc(a.id)}"><div class="m"><div class="l">${esc(a.name)}</div><div class="s">${esc(ACC_TYPES[a.type]||a.type)}${a.cash?'':' · hors reste à vivre'}${a.type==='differe'&&a.debitAcc?' · prélevée sur '+esc(accName(a.debitAcc))+' le '+a.debitDay+' · en attente '+fmt(Math.max(0,-accBalance(a.id,today()))):''}${a.type==='credit'?(()=>{const c=creditInfo(a);return ' · plafond '+fmt(c.lim)+' · dû '+fmt(c.due)+' · disponible '+fmt(c.avail);})():''}</div></div><div class="a ${accBalance(a.id)<0?'neg':''}">${fmt(accBalance(a.id))}</div></div>`;
 const grp=[];S.accounts.forEach(a=>{const g=a.group||'';let e=grp.find(x=>x.g===g);if(!e){e={g,l:[]};grp.push(e);}e.l.push(a);});
  const multi=grp.length>1||(grp[0]&&grp[0].g);
- const accs=grp.map(e=>(multi?`<div class="sr" style="margin:14px 0 2px"><b>${esc(e.g||'Sans organisme')}</b><span class="s">${fmt(e.l.reduce((t,a)=>t+accBalance(a.id),0))}</span></div>`:'')+e.l.map(accRow).join('')).join('');
+ const accs=grp.map(e=>multi?`<details class="fold grp" data-fold="${esc('g:'+e.g)}"${foldOpen('g:'+e.g,true)?' open':''}><summary><b>${esc(e.g||'Sans organisme')}</b><span class="s">${fmt(e.l.reduce((t,a)=>t+accBalance(a.id),0))}</span></summary>${e.l.map(accRow).join('')}</details>`:e.l.map(accRow).join('')).join('');
  return `<h2>Réglages</h2>
- <div class="card"><b>Comptes</b><p class="s" style="margin-top:2px">Touche un compte pour le modifier ou caler son solde sur celui de ta banque.</p>${accs}<div style="margin-top:10px"><button class="primary" data-a="newacc">Ajouter un compte</button></div></div>
- <div class="card"><b>Budgets mensuels</b>${buds}<div style="margin-top:10px"><label>Catégorie<select id="b_key">${budOpts}</select></label><label>Plafond par mois (€)<input id="b_amt" inputmode="decimal"></label><button class="primary" data-a="addbudget">Ajouter</button></div></div>
- <div class="card"><b>Règles de classement automatique</b><p class="s" style="margin-top:2px">Une ligne dont le libellé ou le tiers contient le mot-clé est classée dans la catégorie de la règle. <b>La première règle de la liste qui correspond l'emporte</b> : mets les mots-clés précis (« LECLERC PET ») au-dessus des généraux (« LECLERC »). Touche une règle pour la modifier.</p>${rules}<div style="margin-top:10px"><button class="primary" data-a="newrule">Ajouter une règle</button></div></div>
- <div class="card"><b>Synchronisation</b><div id="sync-box">${syncBoxHTML()}</div></div>
- <div class="card"><b>Sauvegarde</b><p class="s">${bkInfoHTML()} Stockage persistant : ${persisted===true?'oui':persisted===false?'non accordé':'inconnu'}.</p>
+ ${foldCard('comptes','Comptes',`<p class="s" style="margin-top:2px">Touche un compte pour le modifier ou caler son solde sur celui de ta banque.</p>${accs}<div style="margin-top:10px"><button class="primary" data-a="newacc">Ajouter un compte</button></div>`,true)}
+ ${foldCard('budgets','Budgets mensuels',`${buds}<div style="margin-top:10px"><label>Catégorie<select id="b_key">${budOpts}</select></label><label>Plafond par mois (€)<input id="b_amt" inputmode="decimal"></label><button class="primary" data-a="addbudget">Ajouter</button></div>`,false)}
+ ${foldCard('regles','Règles de classement automatique',`<p class="s" style="margin-top:2px">Une ligne dont le libellé ou le tiers contient le mot-clé est classée dans la catégorie de la règle. <b>La première règle de la liste qui correspond l'emporte</b> : mets les mots-clés précis (« LECLERC PET ») au-dessus des généraux (« LECLERC »). Touche une règle pour la modifier.</p>${rules}<div style="margin-top:10px"><button class="primary" data-a="newrule">Ajouter une règle</button></div>`,false)}
+ ${foldCard('sync','Synchronisation',`<div id="sync-box">${syncBoxHTML()}</div>`,false)}
+ ${foldCard('sauvegarde','Sauvegarde',`<p class="s">${bkInfoHTML()} Stockage persistant : ${persisted===true?'oui':persisted===false?'non accordé':'inconnu'}.</p>
  <label>Me rappeler quand des modifications ne sont pas sauvegardées depuis<select id="bk_every">${BK_EVERY.map(n=>`<option value="${n}"${n===S.bk.every?' selected':''}>${n===0?'Jamais (pas de rappel)':n+' jour'+(n>1?'s':'')}</option>`).join('')}</select></label>
- <div class="btns"><button class="primary" data-a="export">Exporter (JSON)</button><label class="ghost" style="text-align:center">Restaurer<input type="file" id="jsonfile" accept=".json,application/json" hidden></label></div></div>
- <div class="card"><b>Zone dangereuse</b><p class="s">Efface toutes les données de l'app sur ce téléphone.</p><button class="danger" data-a="wipe">Tout effacer</button></div>
+ <div class="btns"><button class="primary" data-a="export">Exporter (JSON)</button><label class="ghost" style="text-align:center">Restaurer<input type="file" id="jsonfile" accept=".json,application/json" hidden></label></div>`,false)}
+ ${foldCard('danger','Zone dangereuse',`<p class="s">Efface toutes les données de l'app sur ce téléphone.</p><button class="danger" data-a="wipe">Tout effacer</button>`,false)}
  <p class="s" id="app-version" style="text-align:center;margin:14px 0 0">Mon Compte · version ${APP_VERSION}</p>`;
 }
 const VIEWS={home:homeHTML,tx:linesHTML,rec:recHTML,imp:impHTML,set:setHTML};
