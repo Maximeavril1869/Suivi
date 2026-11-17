@@ -93,14 +93,14 @@ Cycle d'une échéance : la récurrence génère une échéance « à valider »
 ## Menus repliables de Réglages
 
 - Chaque carte de Réglages est un `<details class="card fold">` produit par `foldCard(clé, titre, contenu, ouvertParDéfaut)`. Dans la carte Comptes, chaque organisme (champ « Organisme / groupe » d'un compte) est un `<details class="fold grp">` de clé `g:<nom>` ; le titre du groupe garde son solde. Sans organisme, ou avec un seul groupe sans nom, la liste des comptes reste plate comme avant.
-- Clés des cartes : `comptes`, `budgets`, `regles`, `sync`, `sauvegarde`, `danger`. Par défaut : Comptes et les groupes d'organismes ouverts, le reste replié.
+- Clés des cartes : `comptes`, `budgets`, `regles`, `sync`, `sauvegarde`, `danger`. Par défaut : tout est replié (cartes et groupes d'organismes).
 - **L'état ouvert / replié est propre à l'appareil** : objet `FOLD` dans le `localStorage` (clé `compte-replis`), hors de `S`, donc jamais synchronisé ni exporté. Il est mis à jour par l'événement `toggle` (écouteur global en capture, car cet événement ne remonte pas) et relu à chaque `render()`, ce qui évite qu'une reconstruction de l'écran referme un menu.
 - L'ouverture d'un menu n'est pas une modification : aucun appel à `save()`, donc pas de rappel de sauvegarde ni d'envoi vers la synchronisation.
 
 ## Mise à jour et déploiement
 
 - Hébergement : GitHub Pages à partir du dépôt (branche par défaut `main`).
-- Le service worker (`sw.js`) a une version de cache (constante `V`, actuellement `compte-v23`). **À chaque modification publiée, incrémenter cette version** pour que l'iPhone récupère la nouvelle app, **et la constante `APP_VERSION` de `index.html`** (même numéro : `22` pour `compte-v22`), affichée en bas de Réglages (« Mon Compte · version 22 ») pour vérifier quelle version tourne sur l'appareil.
+- Le service worker (`sw.js`) a une version de cache (constante `V`, actuellement `compte-v24`). **À chaque modification publiée, incrémenter cette version** pour que l'iPhone récupère la nouvelle app, **et la constante `APP_VERSION` de `index.html`** (même numéro : `22` pour `compte-v22`), affichée en bas de Réglages (« Mon Compte · version 22 ») pour vérifier quelle version tourne sur l'appareil.
 - Aucune étape de build : modifier `index.html`, commiter, pousser.
 
 ## Synchronisation chiffrée

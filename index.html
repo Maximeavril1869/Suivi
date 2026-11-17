@@ -100,7 +100,7 @@ td,th{padding:4px;border-bottom:1px solid var(--line);text-align:left}
 <div id="offbar" role="status" aria-live="polite" hidden>Hors ligne : tes modifications sont gardées sur cet appareil</div>
 <script>
 const KEY='compte-salaire-v1';
-const APP_VERSION='23';   // identique au numéro de la constante V de sw.js (compte-v23) : à incrémenter ensemble à chaque livraison
+const APP_VERSION='24';   // identique au numéro de la constante V de sw.js (compte-v24) : à incrémenter ensemble à chaque livraison
 const CATS={
  'Revenus':['Salaire','Primes','Remboursements','Intérêts','Autres revenus'],
  'Logement':['Loyer / crédit','Charges','Énergie','Internet / téléphone','Assurance habitation','Travaux / mobilier'],
@@ -669,9 +669,9 @@ function setHTML(){
  const accRow=a=>`<div class="row" data-a="editacc" data-id="${esc(a.id)}"><div class="m"><div class="l">${esc(a.name)}</div><div class="s">${esc(ACC_TYPES[a.type]||a.type)}${a.cash?'':' · hors reste à vivre'}${a.type==='differe'&&a.debitAcc?' · prélevée sur '+esc(accName(a.debitAcc))+' le '+a.debitDay+' · en attente '+fmt(Math.max(0,-accBalance(a.id,today()))):''}${a.type==='credit'?(()=>{const c=creditInfo(a);return ' · plafond '+fmt(c.lim)+' · dû '+fmt(c.due)+' · disponible '+fmt(c.avail);})():''}</div></div><div class="a ${accBalance(a.id)<0?'neg':''}">${fmt(accBalance(a.id))}</div></div>`;
 const grp=[];S.accounts.forEach(a=>{const g=a.group||'';let e=grp.find(x=>x.g===g);if(!e){e={g,l:[]};grp.push(e);}e.l.push(a);});
  const multi=grp.length>1||(grp[0]&&grp[0].g);
- const accs=grp.map(e=>multi?`<details class="fold grp" data-fold="${esc('g:'+e.g)}"${foldOpen('g:'+e.g,true)?' open':''}><summary><b>${esc(e.g||'Sans organisme')}</b><span class="s">${fmt(e.l.reduce((t,a)=>t+accBalance(a.id),0))}</span></summary>${e.l.map(accRow).join('')}</details>`:e.l.map(accRow).join('')).join('');
+ const accs=grp.map(e=>multi?`<details class="fold grp" data-fold="${esc('g:'+e.g)}"${foldOpen('g:'+e.g,false)?' open':''}><summary><b>${esc(e.g||'Sans organisme')}</b><span class="s">${fmt(e.l.reduce((t,a)=>t+accBalance(a.id),0))}</span></summary>${e.l.map(accRow).join('')}</details>`:e.l.map(accRow).join('')).join('');
  return `<h2>Réglages</h2>
- ${foldCard('comptes','Comptes',`<p class="s" style="margin-top:2px">Touche un compte pour le modifier ou caler son solde sur celui de ta banque.</p>${accs}<div style="margin-top:10px"><button class="primary" data-a="newacc">Ajouter un compte</button></div>`,true)}
+ ${foldCard('comptes','Comptes',`<p class="s" style="margin-top:2px">Touche un compte pour le modifier ou caler son solde sur celui de ta banque.</p>${accs}<div style="margin-top:10px"><button class="primary" data-a="newacc">Ajouter un compte</button></div>`,false)}
  ${foldCard('budgets','Budgets mensuels',`${buds}<div style="margin-top:10px"><label>Catégorie<select id="b_key">${budOpts}</select></label><label>Plafond par mois (€)<input id="b_amt" inputmode="decimal"></label><button class="primary" data-a="addbudget">Ajouter</button></div>`,false)}
  ${foldCard('regles','Règles de classement automatique',`<p class="s" style="margin-top:2px">Une ligne dont le libellé ou le tiers contient le mot-clé est classée dans la catégorie de la règle. <b>La première règle de la liste qui correspond l'emporte</b> : mets les mots-clés précis (« LECLERC PET ») au-dessus des généraux (« LECLERC »). Touche une règle pour la modifier.</p>${rules}<div style="margin-top:10px"><button class="primary" data-a="newrule">Ajouter une règle</button></div>`,false)}
  ${foldCard('sync','Synchronisation',`<div id="sync-box">${syncBoxHTML()}</div>`,false)}
