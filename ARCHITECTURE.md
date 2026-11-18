@@ -82,7 +82,8 @@ Les formulaires sont des modales (`openTx`, `openAcc`, `openRec`, `openPlan`, `o
 | Virements et emprunts | `createTransfer`, `linkTransfer`, `unlinkTransfer`, `xferOther` : deux lignes liées, montant et date répercutés |
 | Récurrences | `occ` (dates d'une récurrence dans un mois), `amountAt` (montant à une date), `dueItems` / `dueRange` (échéances non encore validées ni ignorées), `changeAmount` (nouveau montant à partir d'une date) |
 | Paiements en plusieurs fois | `makePlanItems`, `planStats`, `planKeys` |
-| Débit différé | `debitDates`, `creditInfo` (cartes et crédits) |
+| Débit différé | `debitDates` |
+| Carte de crédit | `creditInfo` : **le solde de la carte est le montant encore disponible** ; dette = plafond − solde (plafond 3000, solde 2500 : dû 500). Solde négatif = plafond dépassé. Achat = ligne négative (le disponible baisse), remboursement = ligne positive (il remonte). Choisir ce type dans la fiche d'un compte décoche « Compter dans le reste à vivre » |
 | Classement | `autoCat` (première règle correspondante), `kwFrom`, `linkRec` (rapprochement d'une ligne avec une récurrence) |
 | Règles (Réglages) | `openRule`, `saveRule`, `ruleLines` (lignes existantes concernées), `openRulePreview` / `applyRulePreview` (aperçu à cocher avant reclassement), `moveRule` (ordre) |
 | Import CSV | `parseCSV`, `parseAmount`, `parseDate`, `guessCol`, `impParse`, `doImport`, `onFile` |
@@ -100,7 +101,7 @@ Cycle d'une échéance : la récurrence génère une échéance « à valider »
 ## Mise à jour et déploiement
 
 - Hébergement : GitHub Pages à partir du dépôt (branche par défaut `main`).
-- Le service worker (`sw.js`) a une version de cache (constante `V`, actuellement `compte-v25`). **À chaque modification publiée, incrémenter cette version** pour que l'iPhone récupère la nouvelle app, **et la constante `APP_VERSION` de `index.html`** (même numéro : `22` pour `compte-v22`), affichée en bas de Réglages (« Mon Compte · version 22 ») pour vérifier quelle version tourne sur l'appareil.
+- Le service worker (`sw.js`) a une version de cache (constante `V`, actuellement `compte-v26`). **À chaque modification publiée, incrémenter cette version** pour que l'iPhone récupère la nouvelle app, **et la constante `APP_VERSION` de `index.html`** (même numéro : `22` pour `compte-v22`), affichée en bas de Réglages (« Mon Compte · version 22 ») pour vérifier quelle version tourne sur l'appareil.
 - Aucune étape de build : modifier `index.html`, commiter, pousser.
 
 ## Synchronisation chiffrée

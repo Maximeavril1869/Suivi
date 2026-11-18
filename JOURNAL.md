@@ -5,7 +5,7 @@ Les entrées les plus récentes sont en haut. À chaque intervention, ajouter un
 
 ## État actuel (2026-11-16)
 
-- App PWA locale d'abord (un seul fichier `index.html`), publiée sur GitHub Pages, utilisée sur iPhone et iPad. **Synchronisation chiffrée** (validée sur appareils le 2026-11-12), **rappel de sauvegarde partagé** (même logique que Plan du jour) et **bannière « Hors ligne »** ajoutés le 2026-11-12 (à valider sur iPhone et iPad). Service worker en version `compte-v25` (numéro affiché en bas de Réglages). **Réglages : menus repliables** depuis le 2026-11-17 (à valider sur iPhone et iPad).
+- App PWA locale d'abord (un seul fichier `index.html`), publiée sur GitHub Pages, utilisée sur iPhone et iPad. **Synchronisation chiffrée** (validée sur appareils le 2026-11-12), **rappel de sauvegarde partagé** (même logique que Plan du jour) et **bannière « Hors ligne »** ajoutés le 2026-11-12 (à valider sur iPhone et iPad). Service worker en version `compte-v26` (numéro affiché en bas de Réglages). **Réglages : menus repliables** depuis le 2026-11-17 (à valider sur iPhone et iPad).
 - Plan en 3 étapes entièrement présent dans le code : comptes multiples + virements, paiements en plusieurs fois, emprunts / livrets / cartes.
 - Reste à faire : tester l'import CSV avec l'export réel de la banque (point en attente depuis la première version) ; valider la synchronisation sur appareil.
 - Aucune donnée réelle n'est stockée dans le dépôt.
@@ -26,6 +26,15 @@ Les entrées les plus récentes sont en haut. À chaque intervention, ajouter un
 - Fait : `foldCard` et l'objet `FOLD` (`localStorage`, clé `compte-replis`) dans `index.html` ; `<details>` natifs. Service worker `compte-v23`, `APP_VERSION = '23'`.
 - Tests : `tests/test_replis.py` (34 vérifications) ; `go_settings` de `tests/test_sync.py` déplie désormais toutes les cartes pour que les anciens tests atteignent leurs champs ; les trois anciennes suites passent toujours (57, 50, 30).
 - Reste à valider sur iPhone et iPad.
+
+## 2026-11-18 — Cartes de crédit : dette = plafond − solde (version 26)
+
+- Retour de l'utilisateur : « J'ai le droit à 3000, je suis à 2500, je dois donc 500 » ; l'app affichait 5 500 € de crédit disponible (plafond + solde), ce qui est faux.
+- Cause : `creditInfo` supposait un solde négatif quand on doit de l'argent (disponible = plafond + solde, dû = −solde si négatif).
+- Fait : **le solde d'une carte de crédit est le montant encore disponible** ; dû = plafond − solde (jamais négatif), disponible = solde (négatif = plafond dépassé). Aucune migration : le solde que l'utilisateur avait saisi (2500) est déjà dans ce sens, donc l'affichage devient juste tout de suite. Les achats (lignes négatives) font baisser le disponible, les remboursements le font remonter, comme avant.
+- Fiche de compte : texte d'aide séparé pour la carte de crédit (saisir ce qu'il reste à utiliser, en positif) ; choisir ce type décoche « Compter dans le reste à vivre » (sinon la réserve disponible serait comptée comme de l'argent).
+- Service worker `compte-v26`, `APP_VERSION = '26'`. Tests : `tests/test_cartes_credit.py` (15 vérifications) ; les quatre autres suites passent toujours.
+- Point à confirmer avec l'utilisateur : une carte déjà créée avec la case « Compter dans le reste à vivre » cochée garde cette case (l'app ne la décoche pas toute seule) ; si l'utilisateur veut que la dette de la carte pèse sur le reste à vivre, la règle reste à définir.
 
 ## 2026-11-17 (soir) — Marge en haut des pages (version 25)
 
