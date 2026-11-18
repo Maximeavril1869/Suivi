@@ -5,7 +5,7 @@ Les entrées les plus récentes sont en haut. À chaque intervention, ajouter un
 
 ## État actuel (2026-11-16)
 
-- App PWA locale d'abord (un seul fichier `index.html`), publiée sur GitHub Pages, utilisée sur iPhone et iPad. **Synchronisation chiffrée** (validée sur appareils le 2026-11-12), **rappel de sauvegarde partagé** (même logique que Plan du jour) et **bannière « Hors ligne »** ajoutés le 2026-11-12 (à valider sur iPhone et iPad). Service worker en version `compte-v27` (numéro affiché en bas de Réglages). **Réglages : menus repliables** depuis le 2026-11-17 (à valider sur iPhone et iPad).
+- App PWA locale d'abord (un seul fichier `index.html`), publiée sur GitHub Pages, utilisée sur iPhone et iPad. **Synchronisation chiffrée** (validée sur appareils le 2026-11-12), **rappel de sauvegarde partagé** (même logique que Plan du jour) et **bannière « Hors ligne »** ajoutés le 2026-11-12 (à valider sur iPhone et iPad). Service worker en version `compte-v28` (numéro affiché en bas de Réglages). **Réglages : menus repliables** depuis le 2026-11-17 (à valider sur iPhone et iPad).
 - Plan en 3 étapes entièrement présent dans le code : comptes multiples + virements, paiements en plusieurs fois, emprunts / livrets / cartes.
 - Reste à faire : tester l'import CSV avec l'export réel de la banque (point en attente depuis la première version) ; valider la synchronisation sur appareil.
 - Aucune donnée réelle n'est stockée dans le dépôt.
@@ -26,6 +26,15 @@ Les entrées les plus récentes sont en haut. À chaque intervention, ajouter un
 - Fait : `foldCard` et l'objet `FOLD` (`localStorage`, clé `compte-replis`) dans `index.html` ; `<details>` natifs. Service worker `compte-v23`, `APP_VERSION = '23'`.
 - Tests : `tests/test_replis.py` (34 vérifications) ; `go_settings` de `tests/test_sync.py` déplie désormais toutes les cartes pour que les anciens tests atteignent leurs champs ; les trois anciennes suites passent toujours (57, 50, 30).
 - Reste à valider sur iPhone et iPad.
+
+## 2026-11-18 (nuit) — Budget du jour façon Money Coach (version 28)
+
+- Demande : aimait dans Money Coach le solde mensuel, hebdomadaire (mensuel ÷ nombre de semaines) et journalier (hebdomadaire ÷ nombre de jours), « avec l'ajustement en fonction de la conso par jour ». Question posée avant : « le reste à vivre est calculé à quelle échéance ? » (réponse : à la date d'aujourd'hui, sans échéances à venir ; il n'existait pas de prévisionnel de fin de période).
+- Décisions de l'utilisateur : montant de départ = **reste à vivre d'aujourd'hui + échéances à venir** ; période **de salaire à salaire** ; consommation = **toutes les dépenses sauf fixes et virements** ; ajustement **report en continu** ; semaine **du lundi au dimanche** ; carte de crédit **ignorée** (case « Compter dans le reste à vivre » décochée : ses remboursements prévus comptent déjà comme dépenses à venir, la déduire aussi les compterait deux fois). Jour de paie : **2 jours ouvrés avant le dernier jour ouvré du mois** (lundi à vendredi hors fériés), **décembre : 7 jours plus tôt** (le 22 au lieu du 29), **modifiable** mois par mois.
+- Fait : carte « Budget du jour » en tête de l'Accueil (aujourd'hui, cette semaine, jusqu'à la paie, par jour, détail reste à vivre + échéances à venir) ; Réglages › Jours de paie (14 mois, touche un mois pour changer la date, « Rétablir la règle ») ; champ `payDates` synchronisé. Service worker `compte-v28`, `APP_VERSION = '28'`. Détail du calcul dans ARCHITECTURE.md (« Budget du jour »).
+- Exemple vérifié : paie novembre 2026 = jeudi 26 ; décembre 2026 = mardi 22 ; période du 28 oct au 25 nov (8 jours restants le 18 nov).
+- Tests : `tests/test_budget_jour.py` (60 vérifications) ; `test_replis.py` adapté (sept cartes) ; les autres suites passent.
+- Hypothèses non confirmées : jours fériés français uniquement (pas de jours fériés locaux), pas de jour de solidarité ; l'app ne sait pas si une paie est effectivement arrivée (la période change à la date, pas à la réception) ; une dépense à venir non validée mais déjà passée dans la période est comptée comme à venir.
 
 ## 2026-11-18 (suite) — Correction : poids de la carte dans les totaux (version 27)
 

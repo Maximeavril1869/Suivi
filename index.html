@@ -80,6 +80,8 @@ body.off .fab{bottom:calc(104px + env(safe-area-inset-bottom))}
 .btns>*{flex:1}
 table{width:100%;border-collapse:collapse;font-size:13px}
 td,th{padding:4px;border-bottom:1px solid var(--line);text-align:left}
+.bud{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:8px;text-align:center}
+.bud .bv{font-size:18px;font-weight:700;margin-top:2px}
 .chips{display:flex;gap:8px;overflow-x:auto;margin:0 0 12px;padding-bottom:2px}
 .chip{flex:none;border:1px solid var(--line);background:var(--card);color:var(--mut);border-radius:12px;padding:8px 12px;text-align:left}
 .chip.on{border-color:var(--pri);color:var(--tx);box-shadow:inset 0 0 0 1px var(--pri)}
@@ -100,7 +102,7 @@ td,th{padding:4px;border-bottom:1px solid var(--line);text-align:left}
 <div id="offbar" role="status" aria-live="polite" hidden>Hors ligne : tes modifications sont gardées sur cet appareil</div>
 <script>
 const KEY='compte-salaire-v1';
-const APP_VERSION='27';   // identique au numéro de la constante V de sw.js (compte-v27) : à incrémenter ensemble à chaque livraison
+const APP_VERSION='28';   // identique au numéro de la constante V de sw.js (compte-v28) : à incrémenter ensemble à chaque livraison
 const CATS={
  'Revenus':['Salaire','Primes','Remboursements','Intérêts','Autres revenus'],
  'Logement':['Loyer / crédit','Charges','Énergie','Internet / téléphone','Assurance habitation','Travaux / mobilier'],
@@ -113,7 +115,7 @@ const CATS={
  'Divers':['Cadeaux','Imprévus','Non classé']
 };
 const RK='Loisirs|Restaurants / bars';
-const defaultState=()=>({v:2,accounts:[{id:'a1',name:'Compte salaire',type:'courant',opening:0,cash:true}],shown:['a1'],tx:[],rec:[],plans:[],rules:[],budgets:{},csvMaps:{},skips:[],lastExport:null,bk:{since:null,snooze:null,every:7}});
+const defaultState=()=>({v:2,accounts:[{id:'a1',name:'Compte salaire',type:'courant',opening:0,cash:true}],shown:['a1'],tx:[],rec:[],plans:[],rules:[],budgets:{},payDates:{},csvMaps:{},skips:[],lastExport:null,bk:{since:null,snooze:null,every:7}});
 /* Rappel de sauvegarde (partagé entre appareils, clé « bk » de la ligne meta) : since = date de la première modification non sauvegardée,
    snooze = rappel reporté jusqu'à cette date, every = délai en jours (0 = jamais). Le rappel n'apparaît que s'il y a des modifications non sauvegardées. */
 const BK_EVERY=[0,3,7,14,30],BK_DEFAULT=7;
@@ -143,6 +145,7 @@ function migrate(raw){
   }
   if(a.anchor){a.adj=Math.round((a.anchor.amount-o.tx.filter(x=>x.acc===a.id&&x.date<=a.anchor.date).reduce((s,x)=>s+x.amount,0))*100)/100;a.opening=0;}
  });
+ if(!o.payDates||typeof o.payDates!=='object'||Array.isArray(o.payDates))o.payDates={};
  delete o.opening;o.v=2;return o;
 }
 function load(){try{const r=localStorage.getItem(KEY);if(r)return migrate(JSON.parse(r));}catch(e){}return migrate(null);}
@@ -442,6 +445,74 @@ function breakdownHTML(){
  }).join('');
  return `<div class="card"><b>${isY?'Mois par mois':'Jour par jour'}</b><div class="s">Touche une ligne pour l'ouvrir</div>${rows}</div>`;
 }
+/* ---------- Budget du jour (façon Money Coach) ----------
+   Période = de jour de paie à la veille du suivant. Budget = reste à vivre d'aujourd'hui (comptes cochés ET « reste à vivre »)
+   + échéances à venir de la période (non validées, hors prélèvements de débit différé déjà comptés), réparti sur les jours restants
+   (aujourd'hui compris). Il se recale tout seul chaque jour : ce qu'on ne dépense pas se répartit sur les jours suivants. */
+const daysBetween=(a,b)=>Math.round((new Date(b+'T12:00:00')-new Date(a+'T12:00:00'))/86400000);
+function easter(y){const a=y%19,b=Math.floor(y/100),c=y%100,d=Math.floor(b/4),e=b%4,f=Math.floor((b+8)/25),g=Math.floor((b-f+1)/3),h=(19*a+b-d-g+15)%30,i=Math.floor(c/4),k=c%4,l=(32+2*e+2*i-h-k)%7,m=Math.floor((a+11*h+22*l)/451),mo=Math.floor((h+l-7*m+114)/31),da=((h+l-7*m+114)%31)+1;return y+'-'+pad(mo)+'-'+pad(da);}
+const holidayCache={};
+function holidays(y){
+ if(holidayCache[y])return holidayCache[y];
+ const e=easter(y);
+ return holidayCache[y]=new Set([y+'-01-01',addDays(e,1),y+'-05-01',y+'-05-08',addDays(e,39),addDays(e,50),y+'-07-14',y+'-08-15',y+'-11-01',y+'-11-11',y+'-12-25']);
+}
+function isWorkday(d){const w=new Date(d+'T12:00:00').getDay();return w!==0&&w!==6&&!holidays(Number(d.slice(0,4))).has(d);}
+function payRule(ym){   // 2 jours ouvrés avant le dernier jour ouvré du mois ; décembre : 7 jours plus tôt
+ const [y,m]=ym.split('-').map(Number);let d=y+'-'+pad(m)+'-'+pad(dim(y,m));
+ while(!isWorkday(d))d=addDays(d,-1);
+ let n=0;while(n<2){d=addDays(d,-1);if(isWorkday(d))n++;}
+ return m===12?addDays(d,-7):d;
+}
+const payDate=ym=>(S.payDates&&S.payDates[ym])||payRule(ym);
+function payCycle(d){
+ const m=monthOf(d);
+ const starts=[-1,0,1].map(k=>payDate(addMonths(m,k))).filter(x=>x<=d);
+ const nexts=[0,1,2].map(k=>payDate(addMonths(m,k))).filter(x=>x>d);
+ const from=starts.length?starts.reduce((a,b)=>a>b?a:b):m+'-01';
+ const to=nexts.length?addDays(nexts.reduce((a,b)=>a<b?a:b),-1):m+'-'+pad(dim(Number(m.slice(0,4)),Number(m.slice(5))));
+ return{from,to};
+}
+function budgetInfo(now){
+ const cash=scopeAccs(true);if(!cash.length)return null;
+ const ids=new Set(cash.map(a=>a.id)),cyc=payCycle(now);
+ const rav=balanceAt(now,true);
+ const upSum=dueRange(cyc.from,cyc.to).filter(x=>!x.noproj&&ids.has(x.r.acc)).reduce((s,x)=>s+x.amount,0);
+ const B=rav+upSum;
+ const conso=S.tx.filter(t=>t.date===now&&ids.has(t.acc)&&t.amount<0&&!t.xfer&&!t.recKey).reduce((s,t)=>s-t.amount,0);
+ const days=daysBetween(now,cyc.to)+1;
+ const perDay=days>0?(B+conso)/days:0;
+ const sunday=addDays(now,6-((new Date(now+'T12:00:00').getDay()+6)%7));
+ const wDays=daysBetween(now,sunday<cyc.to?sunday:cyc.to)+1;
+ return{from:cyc.from,to:cyc.to,days,rav,upSum,B,conso,perDay,today:perDay-conso,week:perDay*wDays-conso,wDays};
+}
+function budgetCardHTML(now){
+ if(!S.tx.length)return '';
+ const b=budgetInfo(now);if(!b)return '';
+ const short=d=>d.slice(8)+'/'+d.slice(5,7);
+ const col=(l,v)=>`<div><div class="s">${l}</div><div class="bv ${v<-0.004?'neg':''}">${fmt(v)}</div></div>`;
+ return `<div class="card"><b>Budget du jour</b><div class="bud">${col("Aujourd'hui",b.today)}${col('Cette semaine',b.week)}${col('Jusqu\'au '+short(b.to),b.B)}</div><div class="s" style="margin-top:8px">Période du ${short(b.from)} au ${short(b.to)} · ${b.days} jour${b.days>1?'s':''} (aujourd'hui compris) · ${fmt(b.perDay)} par jour</div><div class="s">Reste à vivre ${fmt(b.rav)} ${b.upSum<0?'−':'+'} échéances à venir ${fmt(Math.abs(b.upSum))}</div></div>`;
+}
+function payRowsHTML(){
+ const cur=monthOf(today());
+ return Array.from({length:14},(_,i)=>{const m=addMonths(cur,i-1),d=payDate(m),rule=payRule(m);
+  const lbl=new Date(d+'T12:00:00').toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'});
+  return `<div class="row" data-a="editpay" data-m="${m}"><div class="m"><div class="l">${esc(monthLabel(m))}</div><div class="s">${esc(lbl)}${d!==rule?' · modifié (règle : '+rule.slice(8)+'/'+rule.slice(5,7)+')':''}</div></div><div class="a">${d.slice(8)}/${d.slice(5,7)}</div></div>`;}).join('');
+}
+function openPay(m){
+ const d=payDate(m),rule=payRule(m);txCtx={pm:m};
+ openModal(`<h3>Paie de ${esc(monthLabel(m))}</h3>
+ <label>Date de la paie<input id="pay_d" type="date" value="${d}"></label>
+ <p class="s">Règle : ${frDate(rule)}. Cette date commence une période de budget ; la précédente se termine la veille.</p>
+ <div class="btns"><button class="ghost" data-a="closem">Annuler</button><button class="primary" data-a="savepay">Enregistrer</button></div>
+ ${S.payDates&&S.payDates[m]?'<div style="margin-top:10px"><button class="ghost" style="width:100%" data-a="resetpay">Rétablir la règle</button></div>':''}`);
+}
+function savePay(){
+ const v=$('pay_d').value;if(!/^\d{4}-\d{2}-\d{2}$/.test(v)){alert('Date invalide.');return;}
+ if(!S.payDates)S.payDates={};
+ if(v===payRule(txCtx.pm))delete S.payDates[txCtx.pm];else S.payDates[txCtx.pm]=v;
+ save();closeModal();render();
+}
 function homeHTML(){
  const now=today(),cur=monthOf(now);
  const R=range(),st=statsRange(R.from,R.to);
@@ -451,7 +522,7 @@ function homeHTML(){
  if(!S.tx.length){
   h+=`<div class="card"><b>Pour démarrer</b><ol class="mut" style="margin:6px 0 0;padding-left:20px"><li>Réglages : crée tes comptes et indique leur solde actuel.</li><li>Import : charge le CSV de ta banque.</li><li>Récurrent : ajoute loyer, salaire, abonnements.</li></ol></div>`;
  }
- h+=accBar()+monthNav();
+ h+=accBar()+budgetCardHTML(now)+monthNav();
  let proj,projLabel;
  const lastD=R.to.length===10&&per!=='month'?R.to:R.to.slice(0,7)+'-31';
  if(now>=R.from&&now<=R.to){proj=balNow+due.filter(x=>!x.noproj).reduce((a,x)=>a+x.amount,0);projLabel='Solde prévu fin '+{day:'de journée',week:'de semaine',month:'de mois',year:'d\'année'}[per];}
@@ -675,6 +746,7 @@ const grp=[];S.accounts.forEach(a=>{const g=a.group||'';let e=grp.find(x=>x.g===
  return `<h2>Réglages</h2>
  ${foldCard('comptes','Comptes',`<p class="s" style="margin-top:2px">Touche un compte pour le modifier ou caler son solde sur celui de ta banque.</p>${accs}<div style="margin-top:10px"><button class="primary" data-a="newacc">Ajouter un compte</button></div>`,false)}
  ${foldCard('budgets','Budgets mensuels',`${buds}<div style="margin-top:10px"><label>Catégorie<select id="b_key">${budOpts}</select></label><label>Plafond par mois (€)<input id="b_amt" inputmode="decimal"></label><button class="primary" data-a="addbudget">Ajouter</button></div>`,false)}
+ ${foldCard('paie','Jours de paie',`<p class="s" style="margin-top:2px">Le budget du jour se calcule de paie à paie. Règle : 2 jours ouvrés avant le dernier jour ouvré du mois (décembre : 7 jours plus tôt). Touche un mois pour changer sa date ; une période va du jour de paie à la veille du suivant.</p>${payRowsHTML()}`,false)}
  ${foldCard('regles','Règles de classement automatique',`<p class="s" style="margin-top:2px">Une ligne dont le libellé ou le tiers contient le mot-clé est classée dans la catégorie de la règle. <b>La première règle de la liste qui correspond l'emporte</b> : mets les mots-clés précis (« LECLERC PET ») au-dessus des généraux (« LECLERC »). Touche une règle pour la modifier.</p>${rules}<div style="margin-top:10px"><button class="primary" data-a="newrule">Ajouter une règle</button></div>`,false)}
  ${foldCard('sync','Synchronisation',`<div id="sync-box">${syncBoxHTML()}</div>`,false)}
  ${foldCard('sauvegarde','Sauvegarde',`<p class="s">${bkInfoHTML()} Stockage persistant : ${persisted===true?'oui':persisted===false?'non accordé':'inconnu'}.</p>
@@ -1023,6 +1095,9 @@ function act(a,ds){
  else if(a==='doimport')doImport();
  else if(a==='newrule')openRule(null);
  else if(a==='editrule')openRule(ds.kw);
+ else if(a==='editpay')openPay(ds.m);
+ else if(a==='savepay')savePay();
+ else if(a==='resetpay'){if(S.payDates)delete S.payDates[txCtx.pm];save();closeModal();render();}
  else if(a==='saverule')saveRule();
  else if(a==='ruleapply')applyRulePreview();
  else if(a==='rulenoapply'){closeModal();render();}
@@ -1072,7 +1147,7 @@ const SYNC_KEY='sb_publishable_rHeMIa4CSjCjZXpAI-0tTQ_QC1O06Ng';   // clé publi
 const SYNC_APP='suivi';
 const SYNC_SESSION_KEY='compte-sync-session',SYNC_META_KEY='compte-sync-meta',SYNC_CLE_KEY='compte-sync-cle',SYNC_LOST_KEY='compte-sync-conflits';
 const SYNC_POLL_MS=5000,SYNC_PBKDF2=600000,SYNC_MIN_PHRASE=12;
-const SYNC_META_FIELDS=['v','accounts','rec','plans','rules','budgets','csvMaps','skips','lastExport','bk'];
+const SYNC_META_FIELDS=['v','accounts','rec','plans','rules','budgets','payDates','csvMaps','skips','lastExport','bk'];
 let syncSession=null,syncKey=null,syncKeyMode=null,syncMeta={since:null,synced:{},done:false};
 let syncState={status:'start',last:null,msg:''},syncBusy=false,syncAgain=false,syncTimer=null,syncRefreshing=null,syncUiPending=false,syncCache={raw:undefined,out:null},syncMetaText='';
 const SYNC_ENC=new TextEncoder(),SYNC_DEC=new TextDecoder();

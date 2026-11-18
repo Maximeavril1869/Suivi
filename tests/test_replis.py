@@ -13,7 +13,7 @@ from playwright.sync_api import sync_playwright  # noqa: E402
 import test_sync as T  # noqa: E402
 from test_sync import FauxSupabase, check, device  # noqa: E402
 
-CARTES = ['comptes', 'budgets', 'regles', 'sync', 'sauvegarde', 'danger']
+CARTES = ['comptes', 'budgets', 'paie', 'regles', 'sync', 'sauvegarde', 'danger']
 
 
 def etat_replis(pg):
@@ -42,7 +42,7 @@ def test_cartes(browser):
     comptes_demo(pg, groupes=False)
     pg.click('[data-a=nav][data-v=set]')
     e = etat_replis(pg)
-    check('les six cartes sont repliables', sorted(e) == sorted(CARTES), e)
+    check('les sept cartes sont repliables', sorted(e) == sorted(CARTES), e)
     check('par défaut : tout est replié', not any(e.values()), e)
     check('une carte repliée masque son contenu', not pg.is_visible('[data-a=newrule]') and not pg.is_visible('[data-a=newacc]'))
     pg.click('details[data-fold=comptes] > summary')

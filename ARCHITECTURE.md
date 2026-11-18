@@ -51,6 +51,7 @@ Contenu de l'état `S` :
 | `plans` | Paiements en plusieurs fois : liste d'échéances mensuelles |
 | `rules` | Règles de classement automatique (mot-clé, catégorie, sous-catégorie, tiers facultatif), **dans l'ordre de priorité** : la première qui correspond l'emporte |
 | `budgets` | Budgets par catégorie ou sous-catégorie |
+| `payDates` | Dates de paie modifiées à la main, `{'AAAA-MM': 'AAAA-MM-JJ'}` ; absent = règle (voir « Budget du jour ») |
 | `csvMaps` | Correspondance de colonnes mémorisée par format de CSV |
 | `skips` | Échéances ignorées |
 | `lastExport` | Date de la dernière sauvegarde |
@@ -66,11 +67,11 @@ Navigation en bas, 5 vues (objet `VIEWS`) :
 
 | Vue | Fonction | Contenu |
 |---|---|---|
-| Accueil | `homeHTML` | Solde, graphique, répartition, bloc « Sortir du découvert », échéances à valider (le rappel de sauvegarde est en tête de toutes les vues) |
+| Accueil | `homeHTML` | Carte « Budget du jour », solde, graphique, répartition, bloc « Sortir du découvert », échéances à valider (le rappel de sauvegarde est en tête de toutes les vues) |
 | Lignes | `linesHTML` | Liste filtrable, sélection multiple et modification groupée |
 | Récurrent | `recHTML` | Échéances à valider, récurrences, paiements en plusieurs fois |
 | Import | `impHTML` | Import CSV avec choix des colonnes |
-| Réglages | `setHTML` | Menus repliables : Comptes (groupés par organisme), budgets, règles, synchronisation, sauvegarde et restauration, zone dangereuse |
+| Réglages | `setHTML` | Menus repliables : Comptes (groupés par organisme), budgets, jours de paie, règles, synchronisation, sauvegarde et restauration, zone dangereuse |
 
 Les formulaires sont des modales (`openTx`, `openAcc`, `openRec`, `openPlan`, `openXfer`, `openBulk`), enregistrées par les fonctions `save…`. Un seul gestionnaire d'événements, `act()`, répartit les actions via les attributs `data-a`.
 
@@ -91,17 +92,26 @@ Les formulaires sont des modales (`openTx`, `openAcc`, `openRec`, `openPlan`, `o
 
 Cycle d'une échéance : la récurrence génère une échéance « à valider » ; **Valider** ouvre une ligne pré-remplie que l'on confirme, **Ignorer** l'ajoute à `skips`. Dans les deux cas elle disparaît de la liste (clé `recKey` ou `skips`).
 
+## Budget du jour (façon Money Coach)
+
+Carte en tête de l'Accueil (`budgetCardHTML`, calcul dans `budgetInfo(date)`), masquée tant qu'il n'y a aucune ligne ou aucun compte « reste à vivre » coché.
+
+- **Période** (`payCycle`) : du jour de paie à la veille de la paie suivante. Jour de paie (`payDate` → `payRule`) : **2 jours ouvrés avant le dernier jour ouvré du mois** ; **décembre : 7 jours plus tôt**. Jour ouvré = lundi à vendredi hors jours fériés français (`isWorkday`, `holidays` : 1er janv., lundi de Pâques, 1er mai, 8 mai, Ascension, lundi de Pentecôte, 14 juillet, 15 août, 1er nov., 11 nov., 25 déc. ; `easter` calcule Pâques). Une date modifiée à la main (Réglages › Jours de paie) est dans `S.payDates` (synchronisée) et l'emporte sur la règle.
+- **Budget de la période** `B` = reste à vivre d'aujourd'hui (`balanceAt(date, true)` : comptes cochés ET « reste à vivre ») + échéances à venir de la période (`dueRange` : récurrences et paiements en plusieurs fois non validés, de ces mêmes comptes, hors prélèvements de débit différé `noproj` déjà comptés dans le solde). Les échéances en retard non validées de la période comptent comme à venir.
+- **Par jour** = (`B` + consommation du jour) ÷ jours restants, aujourd'hui compris ; **aujourd'hui** = par jour − consommation du jour ; **cette semaine** (lundi à dimanche, coupée à la fin de la période) = par jour × jours restants de la semaine − consommation du jour. La consommation du jour = dépenses (montants négatifs) datées d'aujourd'hui sur ces comptes, hors virements (`xfer`) et lignes issues d'une récurrence (`recKey`). Le recalage est automatique : ce qui n'est pas dépensé se répartit sur les jours suivants, ce qui est dépensé en plus les réduit.
+- Une carte de crédit hors « reste à vivre » ne change pas le budget ; ses remboursements prévus (récurrences) sont des dépenses à venir.
+
 ## Menus repliables de Réglages
 
 - Chaque carte de Réglages est un `<details class="card fold">` produit par `foldCard(clé, titre, contenu, ouvertParDéfaut)`. Dans la carte Comptes, chaque organisme (champ « Organisme / groupe » d'un compte) est un `<details class="fold grp">` de clé `g:<nom>` ; le titre du groupe garde son solde. Sans organisme, ou avec un seul groupe sans nom, la liste des comptes reste plate comme avant.
-- Clés des cartes : `comptes`, `budgets`, `regles`, `sync`, `sauvegarde`, `danger`. Par défaut : tout est replié (cartes et groupes d'organismes).
+- Clés des cartes : `comptes`, `budgets`, `paie`, `regles`, `sync`, `sauvegarde`, `danger`. Par défaut : tout est replié (cartes et groupes d'organismes).
 - **L'état ouvert / replié est propre à l'appareil** : objet `FOLD` dans le `localStorage` (clé `compte-replis`), hors de `S`, donc jamais synchronisé ni exporté. Il est mis à jour par l'événement `toggle` (écouteur global en capture, car cet événement ne remonte pas) et relu à chaque `render()`, ce qui évite qu'une reconstruction de l'écran referme un menu.
 - L'ouverture d'un menu n'est pas une modification : aucun appel à `save()`, donc pas de rappel de sauvegarde ni d'envoi vers la synchronisation.
 
 ## Mise à jour et déploiement
 
 - Hébergement : GitHub Pages à partir du dépôt (branche par défaut `main`).
-- Le service worker (`sw.js`) a une version de cache (constante `V`, actuellement `compte-v27`). **À chaque modification publiée, incrémenter cette version** pour que l'iPhone récupère la nouvelle app, **et la constante `APP_VERSION` de `index.html`** (même numéro : `22` pour `compte-v22`), affichée en bas de Réglages (« Mon Compte · version 22 ») pour vérifier quelle version tourne sur l'appareil.
+- Le service worker (`sw.js`) a une version de cache (constante `V`, actuellement `compte-v28`). **À chaque modification publiée, incrémenter cette version** pour que l'iPhone récupère la nouvelle app, **et la constante `APP_VERSION` de `index.html`** (même numéro : `22` pour `compte-v22`), affichée en bas de Réglages (« Mon Compte · version 22 ») pour vérifier quelle version tourne sur l'appareil.
 - Aucune étape de build : modifier `index.html`, commiter, pousser.
 
 ## Synchronisation chiffrée
@@ -120,7 +130,7 @@ flowchart LR
 | Élément | Détail |
 |---|---|
 | Compte | Même utilisateur Supabase que Plan du jour (un seul projet pour les apps perso), inscriptions fermées. Mot de passe du compte ≠ phrase secrète |
-| Découpage | `meta` (comptes, récurrences, plans, règles, budgets, correspondances CSV, échéances ignorées) et `tx:AAAA-MM` (les lignes d'un mois) : seul ce qui change est envoyé ou relu |
+| Découpage | `meta` (comptes, récurrences, plans, règles, budgets, dates de paie, correspondances CSV, échéances ignorées) et `tx:AAAA-MM` (les lignes d'un mois) : seul ce qui change est envoyé ou relu |
 | Local à l'appareil | `shown` (comptes cochés) n'est pas synchronisé. `lastExport` (date de la dernière sauvegarde) et `bk` (état et délai du rappel) le sont : une sauvegarde faite sur un appareil vaut pour tous, le rappel disparaît partout |
 | Chiffrement | AES-GCM 256, clé dérivée de la phrase par PBKDF2-SHA-256 (600 000 itérations, sel public dans la ligne `sel`). Le nom de la ligne est authentifié : le serveur ne peut pas échanger deux lignes. Ligne `verif` : témoin qui valide la phrase |
 | Clé sur l'appareil | La clé dérivée est gardée dans le `localStorage` (`compte-sync-cle`) pour ne demander la phrase qu'une fois ; les données y sont déjà en clair, donc aucun risque de plus. Se déconnecter l'efface |
