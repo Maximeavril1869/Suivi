@@ -100,7 +100,7 @@ td,th{padding:4px;border-bottom:1px solid var(--line);text-align:left}
 <div id="offbar" role="status" aria-live="polite" hidden>Hors ligne : tes modifications sont gardées sur cet appareil</div>
 <script>
 const KEY='compte-salaire-v1';
-const APP_VERSION='26';   // identique au numéro de la constante V de sw.js (compte-v26) : à incrémenter ensemble à chaque livraison
+const APP_VERSION='27';   // identique au numéro de la constante V de sw.js (compte-v27) : à incrémenter ensemble à chaque livraison
 const CATS={
  'Revenus':['Salaire','Primes','Remboursements','Intérêts','Autres revenus'],
  'Logement':['Loyer / crédit','Charges','Énergie','Internet / téléphone','Assurance habitation','Travaux / mobilier'],
@@ -175,7 +175,8 @@ const groupOpts=()=>[...new Set(S.accounts.map(a=>a.group).filter(Boolean))].sor
 const inScope=t=>S.shown.includes(t.acc);
 function defAcc(){return S.shown[0]||S.accounts[0].id;}
 function scopeAccs(cashOnly){return S.accounts.filter(a=>S.shown.includes(a.id)&&(!cashOnly||a.cash));}
-function openingSum(cashOnly){return scopeAccs(cashOnly).reduce((s,a)=>s+(a.opening||0),0);}
+/* Dans tout total (solde des comptes cochés, reste à vivre, solde courant des lignes), une carte de crédit pèse sa dette : solde (disponible) − plafond, soit −500 pour un plafond de 3000 et un disponible de 2500 */
+function openingSum(cashOnly){return scopeAccs(cashOnly).reduce((s,a)=>s+(a.opening||0)-(a.type==='credit'?(a.limit||0):0),0);}
 function balanceAt(date,cashOnly){const ids=new Set(scopeAccs(cashOnly).map(a=>a.id));return openingSum(cashOnly)+scopeAccs(cashOnly).reduce((s,a)=>s+(a.anchor&&a.anchor.date<=date?(a.adj||0):0),0)+S.tx.filter(t=>ids.has(t.acc)&&t.date<=date).reduce((s,t)=>s+t.amount,0);}
 function accBalance(id,date){const a=accById(id);return ((a&&a.opening)||0)+(a&&a.anchor&&(!date||a.anchor.date<=date)?(a.adj||0):0)+S.tx.filter(t=>t.acc===id&&(!date||t.date<=date)).reduce((s,t)=>s+t.amount,0);}
 function adjRows(){
