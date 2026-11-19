@@ -82,11 +82,6 @@ table{width:100%;border-collapse:collapse;font-size:13px}
 td,th{padding:4px;border-bottom:1px solid var(--line);text-align:left}
 .bud{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:8px;text-align:center}
 .bud .bv{font-size:18px;font-weight:700;margin-top:2px}
-.chips{display:flex;gap:8px;overflow-x:auto;margin:0 0 12px;padding-bottom:2px}
-.chip{flex:none;border:1px solid var(--line);background:var(--card);color:var(--mut);border-radius:12px;padding:8px 12px;text-align:left}
-.chip.on{border-color:var(--pri);color:var(--tx);box-shadow:inset 0 0 0 1px var(--pri)}
-.chip b{display:block;font-size:14px}
-.chip span{font-size:12px}
 </style>
 </head>
 <body>
@@ -102,7 +97,7 @@ td,th{padding:4px;border-bottom:1px solid var(--line);text-align:left}
 <div id="offbar" role="status" aria-live="polite" hidden>Hors ligne : tes modifications sont gardées sur cet appareil</div>
 <script>
 const KEY='compte-salaire-v1';
-const APP_VERSION='31';   // identique au numéro de la constante V de sw.js (compte-v31) : à incrémenter ensemble à chaque livraison
+const APP_VERSION='32';   // identique au numéro de la constante V de sw.js (compte-v32) : à incrémenter ensemble à chaque livraison
 const CATS={
  'Revenus':['Salaire','Primes','Remboursements','Intérêts','Autres revenus'],
  'Logement':['Loyer / crédit','Charges','Énergie','Internet / téléphone','Assurance habitation','Travaux / mobilier'],
@@ -406,7 +401,7 @@ const monthNav=()=>{
 };
 const catOptions=sel=>Object.keys(CATS).map(c=>`<option ${c===sel?'selected':''}>${esc(c)}</option>`).join('');
 const subOptions=(cat,sel)=>(CATS[cat]||[]).map(s=>`<option ${s===sel?'selected':''}>${esc(s)}</option>`).join('');
-/* Accueil : choix des comptes dans une carte repliable (Lignes et Récurrent gardent la rangée de puces `accBar`). L'état ouvert / replié est propre à l'appareil (FOLD). */
+/* Accueil, Lignes et Récurrent : choix des comptes dans une carte repliable, la même partout (état ouvert / replié propre à l'appareil, FOLD). */
 function accFoldHTML(){
  if(S.accounts.length<2)return '';
  const now=today(),nOn=S.accounts.filter(a=>S.shown.includes(a.id)).length;
@@ -415,10 +410,6 @@ function accFoldHTML(){
  const row=a=>{const on=S.shown.includes(a.id),b=accBalance(a.id,now);return `<div class="row" data-a="togacc" data-id="${esc(a.id)}"><div class="m"><div class="l">${on?'☑':'☐'} ${esc(multi?a.name:accName(a.id))}</div></div><div class="a ${b<0?'neg':''}">${fmt(b)}</div></div>`;};
  const list=grp.map(e=>multi?`<details class="fold grp" data-fold="${esc('h:'+e.g)}"${foldOpen('h:'+e.g,true)?' open':''}><summary><b>${esc(e.g||'Sans organisme')}</b><span class="s">${fmt(e.l.reduce((t,a)=>t+accBalance(a.id,now),0))}</span></summary>${e.l.map(row).join('')}</details>`:e.l.map(row).join('')).join('');
  return foldCard('hacc',`Comptes : ${nOn} sur ${S.accounts.length} · solde ${fmt(balanceAt(now,false))}`,`<div style="margin-top:6px">${list}</div><div class="btns" style="margin-top:10px"><button class="ghost" data-a="allacc" data-v="1">Tout cocher</button><button class="ghost" data-a="allacc" data-v="0">Tout décocher</button></div>`,false);
-}
-function accBar(){
- if(S.accounts.length<2)return '';
- return `<div class="chips">`+S.accounts.map(a=>{const on=S.shown.includes(a.id);const b=accBalance(a.id,today());return `<button class="chip ${on?'on':''}" data-a="togacc" data-id="${esc(a.id)}"><b>${on?'☑':'☐'} ${esc(accName(a.id))}</b><span class="${b<0?'neg':''}">${fmt(b)}</span></button>`;}).join('')+`</div>`;
 }
 function accSelect(id,sel){
  if(S.accounts.length<2)return '';
@@ -649,7 +640,7 @@ function listHTML(){
 function refreshList(){const l=$('list');if(l)l.innerHTML=listHTML();const c=$('selctl');if(c)c.innerHTML=selCtl();}
 function linesHTML(){
  const cats=Object.keys(CATS).concat(['Virement']).map(c=>`<option ${c===fcat?'selected':''}>${esc(c)}</option>`).join('');
- return `${accBar()}${monthNav()}<input id="s" type="search" placeholder="Rechercher (libellé, tiers, catégorie…)" value="${esc(search)}">
+ return `${accFoldHTML()}${monthNav()}<input id="s" type="search" placeholder="Rechercher (libellé, tiers, catégorie…)" value="${esc(search)}">
  <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px"><select id="fcat" style="margin:0"><option value="">Toutes catégories</option>${cats}</select><label style="display:flex;align-items:center;gap:6px;white-space:nowrap;margin:0;color:var(--tx)"><input type="checkbox" id="funcl" ${funcl?'checked':''} style="width:20px;height:20px;margin:0;padding:0">Non classées</label></div>
  <div class="btns" id="selctl" style="margin-bottom:10px">${selCtl()}</div>
  <div class="card" id="list">${listHTML()}</div>${sel?'':'<button class="fab" data-a="newtx" aria-label="Ajouter">+</button>'}`;
@@ -695,7 +686,7 @@ function planRowsHTML(){
 }
 function recHTML(){
  const R=range(),due=dueRange(R.from,R.to);
- let h=accBar()+monthNav();
+ let h=accFoldHTML()+monthNav();
  h+=`<div class="card"><b>À valider (${PERNAME[per]})</b>`;
  h+=due.length?due.map(x=>`<div class="row"><div class="d">${x.d.slice(8)}/${x.d.slice(5,7)}</div><div class="m"><div class="l">${esc(x.r.label)}</div><div class="s">${esc(x.r.cat)} › ${esc(x.r.sub)}</div></div><div class="a"><div class="${x.amount<0?'neg':'pos'}">${fmt(x.amount)}</div><div style="margin-top:4px"><button class="primary small" data-a="validate" data-k="${esc(x.k)}">Valider</button> <button class="ghost small" data-a="skip" data-k="${esc(x.k)}">Ignorer</button></div></div></div>`).join(''):'<p class="mut">Rien à valider.</p>';
  h+=`</div><div class="card"><b>Mes récurrences</b>`;

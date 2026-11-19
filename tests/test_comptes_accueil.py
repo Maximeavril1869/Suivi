@@ -1,4 +1,4 @@
-"""Tests : choix des comptes de l'Accueil dans une carte repliable (groupée par organisme), Chromium via Playwright.
+"""Tests : choix des comptes dans une carte repliable groupée par organisme (Accueil, Lignes, Récurrent), Chromium via Playwright.
 
 Réutilise les outils de test_sync.py. Aucune donnée réelle : comptes et montants inventés.
 Lancer depuis la racine du dépôt :  PYTHONDONTWRITEBYTECODE=1 python3 tests/test_comptes_accueil.py
@@ -39,7 +39,7 @@ def test_carte(browser):
     pg = device(browser, FauxSupabase())
     etat(pg)
     pg.click('[data-a=nav][data-v=home]')
-    check('plus de rangée de puces sur l’Accueil', pg.evaluate("() => document.querySelectorAll('#app .chips').length") == 0)
+    check('plus de rangée de puces sur l’Accueil', pg.evaluate("() => document.querySelectorAll('#app .chip').length") == 0)
     check('carte repliée au démarrage', pg.evaluate("() => document.querySelector('details[data-fold=hacc]').open") is False)
     check('titre replié : nombre de comptes et solde total', 'Comptes : 3 sur 3' in titre(pg) and '1 700,00' in titre(pg), titre(pg))
     check('comptes masqués tant que la carte est repliée', not pg.is_visible('text=Livret test'))
@@ -58,7 +58,7 @@ def test_carte(browser):
 
 
 def test_groupes_et_pages(browser):
-    print('Accueil : groupes repliables ; Lignes et Récurrent inchangés ; état conservé')
+    print('Groupes repliables ; même carte sur Lignes et Récurrent ; état conservé')
     pg = device(browser, FauxSupabase())
     etat(pg)
     pg.click('[data-a=nav][data-v=home]')
@@ -70,13 +70,22 @@ def test_groupes_et_pages(browser):
     pg.click('[data-a=togacc][data-id=a3]')
     for v in ['tx', 'rec']:
         pg.click('[data-a=nav][data-v=%s]' % v)
-        check('page %s : la rangée de puces est toujours là' % v, pg.evaluate("() => document.querySelectorAll('#app .chips .chip').length") == 3)
+        check('page %s : même carte repliable, au même état (dépliée), 3 comptes' % v, pg.evaluate("() => [document.querySelector('details[data-fold=hacc]').open, document.querySelectorAll('details[data-fold=hacc] [data-a=togacc]').length]") == [True, 3])
+        check('page %s : le groupe replié sur l’Accueil l’est aussi ici' % v, pg.evaluate("() => document.querySelector('details[data-fold=\"h:Banque Alpha\"]').open") is False)
+    pg.click('[data-a=nav][data-v=tx]')
+    pg.click('[data-a=togacc][data-id=a3]')
+    check('Lignes : cocher / décocher fonctionne et met à jour le titre', 'Comptes : 2 sur 3' in titre(pg), titre(pg))
+    pg.click('[data-a=togacc][data-id=a3]')
+    pg.click('[data-a=nav][data-v=rec]')
+    pg.click('[data-a=togacc][data-id=a3]')
+    check('Récurrent : cocher / décocher fonctionne et met à jour le titre', 'Comptes : 2 sur 3' in titre(pg), titre(pg))
+    pg.click('[data-a=togacc][data-id=a3]')
     pg.click('[data-a=nav][data-v=home]')
     pg.click('details[data-fold="h:Banque Alpha"] > summary')
     pg.click('[data-a=togacc][data-id=a1]')
     pg.click('details[data-fold="h:Banque Alpha"] > summary')
     pg.click('[data-a=nav][data-v=tx]')
-    check('le choix des comptes de l’Accueil s’applique aux autres pages (puce décochée)', pg.evaluate("() => document.querySelectorAll('#app .chips .chip.on').length") == 2)
+    check('le choix des comptes de l’Accueil s’applique aux autres pages (2 sur 3)', 'Comptes : 2 sur 3' in titre(pg), titre(pg))
     pg.click('[data-a=nav][data-v=home]')
     pg.reload()
     pg.click('[data-a=nav][data-v=home]')
