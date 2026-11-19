@@ -484,6 +484,38 @@ def test_totaux_fiche(browser):
     check('aucune erreur JavaScript', not pg.errors, pg.errors)
 
 
+def test_ordre_modele(browser):
+    print('Ordre des lignes du modèle (monter / descendre)')
+    pg = device(browser, FauxSupabase())
+    depart(pg)
+    m = mois(pg, 0)
+    L = lambda i, n, k: {'id': i, 'label': n, 'kind': k, 'amount': 10, 'start': m, 'end': '', 'mode': 'fixed'}
+    depart(pg, {'lines': [L('a', 'Alpha', 'gain'), L('r', 'Retenue1', 'ret'), L('b', 'Bravo', 'gain'), L('c', 'Charlie', 'gain')], 'slips': {m: {'rows': [
+        {'k': i, 'label': n, 'kind': k, 'amount': 10} for i, n, k in [('a', 'Alpha', 'gain'), ('r', 'Retenue1', 'ret'), ('b', 'Bravo', 'gain'), ('c', 'Charlie', 'gain')]]}}, 'skips': []})
+    ouvre_paie(pg)
+    pg.evaluate("() => { FOLD['paie-mod'] = true; FOLD['paie-evo'] = true; render(); }")
+    ordre = lambda: pg.evaluate("() => [...document.querySelectorAll('[data-a=paiedit] .l')].map((e) => e.textContent)")
+    check('affichage : gains puis retenues, ordre du modèle', ordre() == ['Alpha', 'Bravo', 'Charlie', 'Retenue1'], ordre())
+    check('première ligne de chaque type : « monter » inactif, dernière : « descendre » inactif', pg.evaluate("() => [...document.querySelectorAll('[data-a=pamove]')].filter((b) => b.disabled).map((b) => b.closest('.row').querySelector('.l').textContent + b.dataset.d)") == ['Alpha-1', 'Charlie1', 'Retenue1-1', 'Retenue11'])
+    pg.click('[data-a=pamove][data-id=c][data-d="-1"]')
+    check('Charlie monté d\'un cran (passe devant Bravo)', ordre() == ['Alpha', 'Charlie', 'Bravo', 'Retenue1'], ordre())
+    check('ordre enregistré dans le modèle (sans toucher aux montants ni aux fiches)', pg.evaluate("() => S.paie.lines.map((l) => l.id).join('')") .replace('r', '') == 'acb' and pg.evaluate("() => S.paie.lines.every((l) => l.amount === 10) && Object.keys(S.paie.slips).length") == 1)
+    pg.click('[data-a=pamove][data-id=a][data-d="1"]')
+    pg.click('[data-a=pamove][data-id=a][data-d="1"]')
+    check('Alpha descendu jusqu\'en bas des gains', ordre() == ['Charlie', 'Bravo', 'Alpha', 'Retenue1'], ordre())
+    pg.reload()
+    ouvre_paie(pg)
+    pg.evaluate("() => { FOLD['paie-mod'] = true; FOLD['paie-evo'] = true; render(); }")
+    check('ordre conservé au rechargement', ordre() == ['Charlie', 'Bravo', 'Alpha', 'Retenue1'], ordre())
+    tab = pg.evaluate("() => [...document.querySelectorAll('table.pa td.l')].map((e) => e.textContent)")
+    check('tableau d\'évolution dans le même ordre', tab == ['Charlie', 'Bravo', 'Alpha', 'Retenue1'], tab)
+    pg.evaluate("(m) => openSlip(m)", m)
+    fiche = pg.evaluate("() => [...document.querySelectorAll('#modal .pa-a')].map((e) => e.closest('label').textContent.split(' ·')[0].trim())")
+    check('fiche : même ordre', fiche == ['Charlie', 'Bravo', 'Alpha', 'Retenue1'], fiche)
+    pg.click('[data-a=closem]')
+    check('aucune erreur JavaScript', not pg.errors, pg.errors)
+
+
 def test_validation_ligne(browser):
     print('Formulaire d\'une ligne : contrôles')
     pg = device(browser, FauxSupabase())
@@ -562,6 +594,7 @@ def main():
         test_ligne_dans_fiches_existantes(browser)
         test_net_calcule(browser)
         test_totaux_fiche(browser)
+        test_ordre_modele(browser)
         test_validation_ligne(browser)
         test_mois_ignores(browser)
         test_sync(browser)

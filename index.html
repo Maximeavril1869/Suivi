@@ -43,6 +43,8 @@ button,.btn{font:inherit}
 .row .m{flex:1;min-width:0}
 .row .l{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .row .a{text-align:right}
+.pa-mv{display:flex;gap:4px;flex:none}
+.pa-mv button{width:40px;min-height:40px;padding:0;font-size:14px}
 .row.pa-fl{flex-wrap:wrap}
 .pa-sum{flex:0 0 100%;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;font-size:13px}
 .pa-sum b{font-size:14px;overflow-wrap:anywhere}
@@ -119,7 +121,7 @@ const KEY='compte-salaire-v1';
 /* Épargne bloquée et Bien : comptent dans le patrimoine net seulement. Jamais dans le reste à vivre, le budget du jour, les soldes des comptes cochés ni « Sortir du découvert », et on n'y saisit pas de lignes : on met à jour leur valeur (solde de référence). */
 const ILLIQ={bloque:1,bien:1};
 const isLiquid=a=>!ILLIQ[a.type];
-const APP_VERSION='46';   // identique au numéro de la constante V de sw.js (compte-v46) : à incrémenter ensemble à chaque livraison
+const APP_VERSION='47';   // identique au numéro de la constante V de sw.js (compte-v47) : à incrémenter ensemble à chaque livraison
 const CATS={
  'Revenus':['Salaire','Primes','Remboursements','Intérêts','Autres revenus'],
  'Logement':['Loyer / crédit','Charges','Énergie','Internet / téléphone','Assurance habitation','Travaux / mobilier'],
@@ -894,6 +896,13 @@ function paSums(rows){
  const pasRows=rows.filter(paIsPas),pas=paR2(pasRows.reduce((t,r)=>t+r.amount,0)),net=paR2(brut-ret);
  return{brut,ret,net,hasPas:pasRows.length>0,avant:paR2(net+pas),ratio:brut>0?Math.round(ret/brut*1000)/10:null};
 }
+/* Lignes du modèle dans l'ordre d'affichage : par type (gains, retenues, totaux) puis dans l'ordre choisi à la main. */
+const paOrdered=()=>S.paie.lines.map((l,i)=>[l,i]).sort((a,b)=>PA_RANK[a[0].kind]-PA_RANK[b[0].kind]||a[1]-b[1]).map(x=>x[0]);
+function paMove(id,d){
+ const L=S.paie.lines,i=L.findIndex(l=>l.id===id);if(i<0)return;
+ const same=paOrdered().filter(l=>l.kind===L[i].kind),k=same.findIndex(l=>l.id===id),o=same[k+d];if(!o)return;
+ const j=L.indexOf(o);[L[i],L[j]]=[L[j],L[i]];
+}
 function paChange(hist,cur,from,amt,note){
  const h=(hist&&hist.length?hist:[{from:'0000-00',amount:cur}]).filter(e=>e.from<from);
  if(!h.length)h.push({from:'0000-00',amount:cur});
@@ -1003,8 +1012,8 @@ function paSlipsHTML(){
  }).join('');
 }
 function paModelHTML(){
- const L=S.paie.lines,now=monthOf(today());
- const rows=L.map(l=>`<div class="row" data-a="paiedit" data-id="${esc(l.id)}"><div class="m"><div class="l">${esc(l.label)}</div><div class="s">${esc(PA_KINDS[l.kind])} · depuis ${esc(paShort(l.start))}${l.end?' · jusqu\'à '+esc(paShort(l.end)):''}</div></div><div class="a">${paFmt(paAmt(l,now))}</div></div>`).join('')||'<p class="mut">Aucune ligne. Ajoute les lignes de ton bulletin (traitement de base, indemnités, cotisations, impôt, brut, net à payer…) : elles se répéteront chaque mois jusqu\'à ce que tu en changes le montant.</p>';
+ const L=paOrdered(),now=monthOf(today()),same=l=>L.filter(x=>x.kind===l.kind);
+ const rows=L.map(l=>`<div class="row" data-a="paiedit" data-id="${esc(l.id)}"><div class="m"><div class="l">${esc(l.label)}</div><div class="s">${esc(PA_KINDS[l.kind])} · depuis ${esc(paShort(l.start))}${l.end?' · jusqu\'à '+esc(paShort(l.end)):''}</div></div><div class="a">${paFmt(paAmt(l,now))}</div><div class="pa-mv"><button class="ghost" data-a="pamove" data-id="${esc(l.id)}" data-d="-1" aria-label="Monter"${same(l)[0]===l?' disabled':''}>▲</button><button class="ghost" data-a="pamove" data-id="${esc(l.id)}" data-d="1" aria-label="Descendre"${same(l).slice(-1)[0]===l?' disabled':''}>▼</button></div></div>`).join('')||'<p class="mut">Aucune ligne. Ajoute les lignes de ton bulletin (traitement de base, indemnités, cotisations, impôt, brut, net à payer…) : elles se répéteront chaque mois jusqu\'à ce que tu en changes le montant.</p>';
  return rows+'<div style="margin-top:10px"><button class="primary" data-a="paiaddline">Ajouter une ligne</button></div>';
 }
 function paSkipsHTML(){
@@ -1030,7 +1039,7 @@ function openSlip(ym,over){
  const ids=new Set(S.paie.lines.map(l=>l.id));
  let rows=over?over.map(r=>Object.assign({},r)):old?old.rows.map(r=>Object.assign({},r)):paRowsFromModel(ym);
  const model=[],extra=rows.filter(r=>!ids.has(r.k));
- S.paie.lines.forEach(l=>{
+ paOrdered().forEach(l=>{
   const r=rows.find(x=>x.k===l.id);
   if(r)model.push(r);else if(paActive(l,ym))model.push({k:l.id,label:l.label,kind:l.kind,amount:''});
  });
@@ -1509,6 +1518,7 @@ function act(a,ds){
  else if(a==='pawin'){paWin=Math.max(0,paWin+Number(ds.d));render();}
  else if(a==='paipt'){paPt=Number(ds.i);render();}
  else if(a==='paiaddline')openPaLine(null);
+ else if(a==='pamove'){paMove(ds.id,Number(ds.d));save();render();}
  else if(a==='paiedit')openPaLine(ds.id);
  else if(a==='savepaline')savePaLine();
  else if(a==='delpaline'){if(confirm('Supprimer cette ligne du modèle ? Les fiches déjà validées sont conservées.')){S.paie.lines=S.paie.lines.filter(x=>x.id!==txCtx.plid);save();closeModal();render();}}
