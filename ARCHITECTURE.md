@@ -145,6 +145,7 @@ flowchart LR
   - Limite : une entrée datée plus tardive de l'historique est écrasée par un changement fait à un mois antérieur (comme pour les récurrences).
 - **Ligne créée dans le modèle** (`savePaLine`) : les fiches déjà validées que la ligne couvre désormais (nouvelle ligne, début avancé, fin repoussée) et qui ne la contiennent pas se voient proposer la ligne (confirmation avec le nombre et la période), au montant du modèle de chaque mois ; sans changement de période, aucune question (un mois laissé vide à la main reste vide).
 - **Net à payer d'une fiche** (`paNetRow`) : dernière ligne dont le libellé (normalisé) contient « net à payer », sinon dernière ligne de type total contenant « net », sinon aucune (tiret) ; affiché dans « Fiches validées » et en tête de la fiche ouverte.
+- **Net calculé** (`paNet`) : gains − retenues d'une fiche, affiché sous le net à payer saisi dans la liste des fiches ; absent si la fiche n'a aucune ligne de gain ; peut différer du net imprimé.
 - **Supprimer des fiches** : « Sélectionner » dans « Fiches validées » (`paSelM`, ensemble de mois, propre à l'affichage) ; toucher une fiche la coche au lieu de l'ouvrir ; « Supprimer (N) » après confirmation retire les fiches de `slips`. Les mois retirés redeviennent « à valider » (`paDue`) tant qu'une ligne du modèle les couvre ; le modèle ne change pas.
 - **Séries** (`paSeries`) : regroupe les lignes des fiches par clé `k`, triées gains, retenues, totaux puis ordre de création. Une ligne supprimée du modèle reste dans l'historique ; à la réouverture d'une fiche elle devient une ligne ponctuelle qui **garde sa clé d'origine** tant que son libellé ne change pas (la série ne se casse pas). Deux lignes ponctuelles de même libellé (casse et accents près) dans un même mois sont refusées.
 - **Affichage** : « À valider » ; tableau (`paTableHTML`) trois mois à la fois, `table-layout:fixed` donc sans défilement horizontal, flèches pour reculer ; montant différent de la fiche précédente en gras et en couleur (classe `chg`) ; courbe SVG (`paChartHTML`) d'une ligne au choix (`#pa_sel`, par défaut la première ligne de type total), 2 px, points de 8 px avec contour de la couleur de la carte, zones de toucher de 28 px (`paipt`), valeur et écart avec le mois précédent sous la courbe ; historique de la ligne avec les motifs ; fiches validées ; modèle. Cartes repliables (clés `paie-evo`, `paie-crb`, `paie-fiches`, `paie-mod`, `paie-hist`), état propre à l'appareil comme les autres menus.
@@ -165,6 +166,7 @@ Les trois vues commencent par la même carte `accFoldHTML` (plus de rangée de p
 ## Largeur d'écran (iPhone 16e = 390 px, jusqu'à 320 px)
 
 Règles à tenir pour qu'aucune vue ni fenêtre ne dépasse l'écran (vérifié par `tests/test_debordements.py`) :
+- Les cartes de chiffres de l'Accueil (`.grid .card`) sont en colonne, libellé en haut et montant en bas : les montants de deux cartes voisines restent alignés même si un libellé passe sur deux lignes.
 - Les grilles utilisent `minmax(0,1fr)` (jamais `1fr` seul : une colonne ne rétrécit pas sous la largeur de son contenu) ; les gros chiffres (`.big`, `.bud .bv`) ont une taille `clamp()` et `overflow-wrap:anywhere`.
 - Les fenêtres (`.sheet`) ont `overflow-x:hidden` et leurs `label` `min-width:0` ; les champs date sont en `appearance:none` (Safari iOS).
 - Les libellés de liste (`.row .l`) sont volontairement coupés par « … » (`text-overflow:ellipsis`) ; la bannière « Hors ligne » passe à la ligne au lieu d'être tronquée.
@@ -180,7 +182,7 @@ Règles à tenir pour qu'aucune vue ni fenêtre ne dépasse l'écran (vérifié 
 ## Mise à jour et déploiement
 
 - Hébergement : GitHub Pages à partir du dépôt (branche par défaut `main`).
-- Le service worker (`sw.js`) a une version de cache (constante `V`, actuellement `compte-v40`). **À chaque modification publiée, incrémenter cette version** pour que l'iPhone récupère la nouvelle app, **et la constante `APP_VERSION` de `index.html`** (même numéro : `22` pour `compte-v22`), affichée en bas de Réglages (« Mon Compte · version 22 ») pour vérifier quelle version tourne sur l'appareil.
+- Le service worker (`sw.js`) a une version de cache (constante `V`, actuellement `compte-v41`). **À chaque modification publiée, incrémenter cette version** pour que l'iPhone récupère la nouvelle app, **et la constante `APP_VERSION` de `index.html`** (même numéro : `22` pour `compte-v22`), affichée en bas de Réglages (« Mon Compte · version 22 ») pour vérifier quelle version tourne sur l'appareil.
 - Aucune étape de build : modifier `index.html`, commiter, pousser.
 
 ## Synchronisation chiffrée

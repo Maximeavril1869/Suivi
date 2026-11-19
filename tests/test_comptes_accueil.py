@@ -107,12 +107,34 @@ def test_sans_groupe(browser):
     check('aucune erreur JavaScript', not pg.errors, pg.errors)
 
 
+def test_alignement_montants(browser):
+    print('Accueil : les montants de deux cartes voisines sont alignés (libellé sur deux lignes ou non)')
+    pg = device(browser, FauxSupabase())
+    etat(pg)
+    pg.evaluate("() => { S.tx.push({ id: 't1', date: today(), label: 'Dépense test', amount: -10, cat: 'Divers', sub: 'Non classé', acc: 'a1', payee: '' }); S.rec.push({ id: 'r1', label: 'Salaire test', amount: 100, acc: 'a1', loan: '', cat: 'Revenus', sub: 'Salaire', freq: 'monthly', day: 28, every: 1, start: '2020-01-28', end: '', match: '' }); save(); }")
+    pg.click('[data-a=nav][data-v=home]')
+    for largeur in (390, 375, 360, 320):
+        pg.set_viewport_size({'width': largeur, 'height': 844})
+        res = pg.evaluate("""() => {
+          const rows = {};
+          document.querySelectorAll('.grid > .card').forEach((c) => {
+            const t = Math.round(c.getBoundingClientRect().top);
+            (rows[t] = rows[t] || []).push({ bottom: c.querySelector('.big').getBoundingClientRect().bottom, label: c.querySelector('.s').textContent });
+          });
+          return Object.values(rows).filter((r) => r.length > 1).map((r) => ({ ecart: Math.max(...r.map((x) => x.bottom)) - Math.min(...r.map((x) => x.bottom)), labels: r.map((x) => x.label) }));
+        }""")
+        check('%d px : au moins une rangée de deux cartes de chiffres' % largeur, len(res) >= 1, res)
+        check('%d px : montants au même niveau dans chaque rangée' % largeur, all(r['ecart'] < 1 for r in res), res)
+    check('aucune erreur JavaScript', not pg.errors, pg.errors)
+
+
 def main():
     with sync_playwright() as p:
         browser = p.chromium.launch()
         test_carte(browser)
         test_groupes_et_pages(browser)
         test_sans_groupe(browser)
+        test_alignement_montants(browser)
         browser.close()
     failed = [n for n, ok in T.RESULTS if not ok]
     print('\n%d vérifications, %d échec(s)' % (len(T.RESULTS), len(failed)))

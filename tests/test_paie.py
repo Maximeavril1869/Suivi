@@ -456,6 +456,33 @@ def test_net_a_payer(browser):
     check('aucune erreur JavaScript', not pg.errors, pg.errors)
 
 
+def test_net_calcule(browser):
+    print('Net calculé (gains − retenues) sur chaque fiche')
+    pg = device(browser, FauxSupabase())
+    depart(pg)
+    m = mois(pg, 0)
+    pg.evaluate("([k, p]) => { const s = defaultState(); s.paie = p; localStorage.setItem(k, JSON.stringify(s)); }", [T.KEY, {'lines': [], 'skips': [], 'slips': {m: {'rows': [
+        {'k': 'a', 'label': 'Traitement', 'kind': 'gain', 'amount': 2500}, {'k': 'b', 'label': 'Indemnité', 'kind': 'gain', 'amount': 100.5},
+        {'k': 'c', 'label': 'Retraite', 'kind': 'ret', 'amount': 345.67}, {'k': 'd', 'label': 'Brut', 'kind': 'tot', 'amount': 2600.5},
+        {'k': 'e', 'label': 'Net à payer', 'kind': 'tot', 'amount': 1999.99}]}}}])
+    pg.reload()
+    ouvre_paie(pg)
+    pg.evaluate("() => { FOLD['paie-fiches'] = true; render(); }")
+    sel = '[data-a=paislip][data-m="%s"]' % m
+    t = norm(pg.inner_text(sel))
+    check('net à payer saisi en gras, net calculé dessous (2500 + 100,50 − 345,67 = 2 254,83)', '1 999,99 €' in t and 'calculé : 2 254,83 €' in t, t)
+    check('les lignes « total / information » ne comptent pas dans le net calculé', pg.evaluate("(r) => paNet(r)", pg.evaluate("(m) => S.paie.slips[m].rows", m)) == 2254.83)
+    pg.evaluate("(m) => { S.paie.slips[m].rows = S.paie.slips[m].rows.filter((r) => r.k !== 'e'); render(); }", m)
+    t = norm(pg.inner_text(sel))
+    check('sans ligne « net à payer » : tiret, mais le net calculé est là', '—' in t and 'calculé : 2 254,83 €' in t, t)
+    pg.evaluate("(m) => { S.paie.slips[m].rows = S.paie.slips[m].rows.filter((r) => r.kind !== 'gain'); render(); }", m)
+    t = norm(pg.inner_text(sel))
+    check('sans aucune ligne de gain : pas de net calculé (jamais un montant négatif inventé)', 'calculé' not in t, t)
+    pg.evaluate("(m) => { S.paie.slips[m].rows = [{ k: 'a', label: 'Traitement', kind: 'gain', amount: 1000 }, { k: 'c', label: 'Retraite', kind: 'ret', amount: 1500 }]; render(); }", m)
+    check('retenues supérieures aux gains : net calculé négatif affiché tel quel', 'calculé : -500,00 €' in norm(pg.inner_text(sel)) or 'calculé : −500,00 €' in norm(pg.inner_text(sel)))
+    check('aucune erreur JavaScript', not pg.errors, pg.errors)
+
+
 def test_validation_ligne(browser):
     print('Formulaire d\'une ligne : contrôles')
     pg = device(browser, FauxSupabase())
@@ -513,6 +540,7 @@ def main():
         test_propagation(browser)
         test_selection_suppression(browser)
         test_ligne_dans_fiches_existantes(browser)
+        test_net_calcule(browser)
         test_net_a_payer(browser)
         test_validation_ligne(browser)
         test_sync(browser)

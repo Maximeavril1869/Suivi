@@ -23,7 +23,7 @@ h3{margin:0 0 10px}
 .s{font-size:12px;color:var(--mut)}
 .card{background:var(--card);border-radius:14px;padding:14px;margin:0 0 12px;box-shadow:0 1px 2px rgba(0,0,0,.06)}
 .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:12px}
-.grid .card{margin:0}
+.grid .card{margin:0;display:flex;flex-direction:column;justify-content:space-between}   /* libellé en haut, montant en bas : les montants de deux cartes voisines restent alignés même si un libellé passe sur deux lignes */
 .big{font-size:clamp(17px,5.6vw,22px);font-weight:700;margin-top:2px;overflow-wrap:anywhere}
 .neg{color:var(--red)}.pos{color:var(--grn)}
 .warn{border-left:4px solid var(--warn)}
@@ -116,7 +116,7 @@ const KEY='compte-salaire-v1';
 /* Épargne bloquée et Bien : comptent dans le patrimoine net seulement. Jamais dans le reste à vivre, le budget du jour, les soldes des comptes cochés ni « Sortir du découvert », et on n'y saisit pas de lignes : on met à jour leur valeur (solde de référence). */
 const ILLIQ={bloque:1,bien:1};
 const isLiquid=a=>!ILLIQ[a.type];
-const APP_VERSION='40';   // identique au numéro de la constante V de sw.js (compte-v40) : à incrémenter ensemble à chaque livraison
+const APP_VERSION='41';   // identique au numéro de la constante V de sw.js (compte-v41) : à incrémenter ensemble à chaque livraison
 const CATS={
  'Revenus':['Salaire','Primes','Remboursements','Intérêts','Autres revenus'],
  'Logement':['Loyer / crédit','Charges','Énergie','Internet / téléphone','Assurance habitation','Travaux / mobilier'],
@@ -882,6 +882,8 @@ function paSeries(){
  arr.forEach((s,i)=>{const o=order.indexOf(s.k);s.i=o>=0?o:1000+i;});
  return arr.sort((a,b)=>PA_RANK[a.kind]-PA_RANK[b.kind]||a.i-b.i);
 }
+/* Net calculé d'une fiche = somme des gains − somme des retenues (les lignes « total / information » ne comptent pas). Il peut différer du net à payer imprimé : les bulletins ont des lignes de base et de plafond qui ne s'additionnent pas. Affiché seulement si la fiche a au moins une ligne de gain. */
+const paNet=rows=>paR2(rows.reduce((t,r)=>t+(r.kind==='gain'?r.amount:r.kind==='ret'?-r.amount:0),0));
 /* Net à payer d'une fiche : la dernière ligne dont le libellé contient « net à payer » (casse et accents ignorés), sinon la dernière ligne de type total dont le libellé contient « net » ; sinon aucune. */
 function paNetRow(rows){
  const ok=re=>rows.filter(r=>re.test(norm(r.label))).pop();
@@ -990,8 +992,8 @@ function paSlipsHTML(){
   h+=`<p class="s" style="margin-top:0">Touche les fiches à supprimer. Un mois supprimé revient dans « À valider » tant que le modèle le couvre.</p><div class="btns" style="margin-bottom:6px"><button class="ghost small" data-a="paiselall">${sm.size===ms.length?'Tout désélectionner':'Tout sélectionner'}</button><button class="ghost small" data-a="paiselend">Annuler</button><button class="danger small" data-a="paidel" ${sm.size?'':'disabled'}>Supprimer (${sm.size})</button></div>`;
  }else h+=`<div style="text-align:right;margin-bottom:4px"><button class="ghost small" data-a="paisel">Sélectionner</button></div>`;
  return h+ms.slice().reverse().map(m=>{
-  const rows=S.paie.slips[m].rows,tot=paNetRow(rows),on=sm&&sm.has(m);
-  return `<div class="row" data-a="${sm?'paitog':'paislip'}" data-m="${m}">${sm?`<div style="font-size:20px;width:28px;flex:none" aria-hidden="true">${on?'☑':'☐'}</div>`:''}<div class="m"><div class="l">${esc(monthLabel(m))}</div><div class="s">${rows.length} ligne${rows.length>1?'s':''}</div></div>${tot?`<div class="a"><b>${paFmt(tot.amount)} €</b><div class="s">Net à payer</div></div>`:'<div class="a mut">—<div class="s">Net à payer</div></div>'}</div>`;}).join('');
+  const rows=S.paie.slips[m].rows,tot=paNetRow(rows),on=sm&&sm.has(m),calc=rows.some(r=>r.kind==='gain')?`<div class="s">calculé : ${paFmt(paNet(rows))} €</div>`:'';
+  return `<div class="row" data-a="${sm?'paitog':'paislip'}" data-m="${m}">${sm?`<div style="font-size:20px;width:28px;flex:none" aria-hidden="true">${on?'☑':'☐'}</div>`:''}<div class="m"><div class="l">${esc(monthLabel(m))}</div><div class="s">${rows.length} ligne${rows.length>1?'s':''}</div></div>${tot?`<div class="a"><b>${paFmt(tot.amount)} €</b><div class="s">Net à payer</div>${calc}</div>`:`<div class="a"><span class="mut">—</span><div class="s">Net à payer</div>${calc}</div>`}</div>`;}).join('');
 }
 function paModelHTML(){
  const L=S.paie.lines,now=monthOf(today());
