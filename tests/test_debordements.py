@@ -195,6 +195,7 @@ def fenetres(pg, largeur):
         ('compte (nouveau)', "() => openAcc()"),
         ('bulletin : fiche à valider', "() => openSlip('2026-11')"),
         ('bulletin : fiche validée', "() => openSlip('2026-10')"),
+        ('bulletin : question « mois suivants »', "() => { openSlip('2026-10'); txCtx.pstash = { ym: '2026-10', rows: [], changed: [{ k: 'l0', label: S.paie.lines[0].label, old: 2500.55 * 50, amt: 2600.55 * 50, later: 2 }, { k: 'l1', label: S.paie.lines[1].label, old: 123.45, amt: 130, later: 1 }] }; openPropag(); }"),
         ('bulletin : ligne (nouvelle)', "() => openPaLine()"),
         ('bulletin : ligne (existante)', "() => { openPaLine('l0'); $('pl_fromw').style.display = 'block'; }"),
         ('modification groupée', "() => { sel = new Set(['t1', 't2']); openBulk(); }"),

@@ -158,7 +158,7 @@ def test_parcours(browser):
     ligne = etat_paie(pg)['lines'][0]
     check('historique daté enregistré avec son motif', [(h['from'], h['amount'], h.get('note')) for h in ligne['hist']] == [('0000-00', 2500.55, None), (m0, 2600.0, "Passage à l'échelon 5")], ligne['hist'])
     check('montant du modèle : ancien avant, nouveau à partir du mois choisi', pg.evaluate("(a) => [paAmt(S.paie.lines[0], a[0]), paAmt(S.paie.lines[0], a[1]), paAmt(S.paie.lines[0], a[2])]", [mois(pg, -1), m0, mois(pg, 3)]) == [2500.55, 2600.0, 2600.0])
-    check('fiches déjà validées inchangées', [etat_paie(pg)['slips'][m]['rows'][0]['amount'] for m in (m2, mois(pg, -1))] == [2500.55, 2500.55])
+    check('fiches validées d\'avant le mois choisi inchangées, celle du mois choisi au nouveau montant', [etat_paie(pg)['slips'][m]['rows'][0]['amount'] for m in (m2, mois(pg, -1), m0)] == [2500.55, 2500.55, 2600.0])
     check('le prochain mois sera pré-rempli au nouveau montant', pg.evaluate("(m) => paRowsFromModel(m)[0].amount", mois(pg, 1)) == 2600.0)
     check('le motif s\'affiche dans l\'historique de la ligne', "Passage à l'échelon 5" in norm(pg.evaluate("() => { FOLD['paie-hist'] = true; paSel = S.paie.lines[0].id; render(); return document.getElementById('app').innerText; }")))
     pg.click('[data-a=paiedit][data-id="%s"]' % ids[0])
@@ -231,6 +231,95 @@ def test_parcours(browser):
     check('aucune erreur JavaScript', not pg.errors, pg.errors)
 
 
+def test_propagation(browser):
+    print('Corriger un mois : le changement vaut pour les mois suivants (comme les récurrences)')
+    pg = device(browser, FauxSupabase())
+    msgs = []
+    pg.on('dialog', lambda d: (msgs.append(d.message), d.accept()))
+    depart(pg)
+    ouvre_paie(pg)
+    mm = {k: mois(pg, k) for k in range(-5, 2)}
+    ajoute_ligne(pg, 'Brut', 'gain', '1000', mm[-5])
+    ajoute_ligne(pg, 'Net', 'tot', '800', mm[-5])
+    pg.click('[data-a=paiall]')
+    ids = pg.evaluate("() => S.paie.lines.map((l) => l.id)")
+
+    def montants(k, i=0):
+        return [etat_paie(pg)['slips'][mm[j]]['rows'][i]['amount'] for j in range(-5, 1)] if k is None else None
+
+    def brut():
+        return [etat_paie(pg)['slips'][mm[j]]['rows'][0]['amount'] for j in range(-5, 1)]
+
+    def net():
+        return [etat_paie(pg)['slips'][mm[j]]['rows'][1]['amount'] for j in range(-5, 1)]
+
+    check('6 fiches validées à 1000 (rattrapage)', brut() == [1000] * 6, brut())
+    # mois 3 : 1000 -> 1500
+    pg.evaluate("(m) => openSlip(m)", mm[-2])
+    pg.fill('#modal .pa-a[data-k="%s"]' % ids[0], '1500')
+    pg.click('[data-a=saveslip]')
+    t = norm(pg.inner_text('#modal'))
+    check('montant changé : la question « mois suivants » est posée', 'Appliquer aux mois suivants' in t and 'Brut' in t and '1 000,00 € → 1 500,00 €' in t, t)
+    check('la question annonce le nombre de fiches suivantes touchées (2)', '2 fiches déjà validées après ce mois' in t, t)
+    check('rien n\'est enregistré tant qu\'on n\'a pas répondu', brut() == [1000] * 6)
+    pg.click('[data-a=paipback]')
+    check('« Retour » rouvre la fiche avec la valeur saisie', pg.input_value('#modal .pa-a[data-k="%s"]' % ids[0]) == '1500')
+    pg.click('[data-a=saveslip]')
+    pg.fill('#pp_note', 'Passage à l\'échelon 5')
+    pg.click('[data-a=paipropag]')
+    check('« À partir de ce mois » : ce mois et les suivants à 1500, les précédents inchangés', brut() == [1000, 1000, 1000, 1500, 1500, 1500], brut())
+    check('l\'autre ligne n\'est pas touchée', net() == [800] * 6, net())
+    h = etat_paie(pg)['lines'][0]['hist']
+    check('modèle mis à jour : historique daté avec motif', [(e['from'], e['amount'], e.get('note')) for e in h] == [('0000-00', 1000, None), (mm[-2], 1500, "Passage à l'échelon 5")], h)
+    check('les mois à venir sont pré-remplis à 1500', pg.evaluate("(m) => paRowsFromModel(m)[0].amount", mm[1]) == 1500)
+    check('fenêtre refermée', pg.evaluate("() => !document.getElementById('modal').classList.contains('open')"))
+
+    # variation ponctuelle : ce mois seulement
+    pg.evaluate("(m) => openSlip(m)", mm[-1])
+    pg.fill('#modal .pa-a[data-k="%s"]' % ids[0], '1200')
+    pg.click('[data-a=saveslip]')
+    pg.check('#modal input[name=pp_0][value=one]')
+    pg.click('[data-a=paipropag]')
+    check('« Ce mois seulement » : seule cette fiche change, modèle inchangé', brut() == [1000, 1000, 1000, 1500, 1200, 1500] and len(etat_paie(pg)['lines'][0]['hist']) == 2, brut())
+    # rouvrir la fiche ponctuelle sans la toucher : aucune question
+    pg.evaluate("(m) => openSlip(m)", mm[-1])
+    pg.click('[data-a=saveslip]')
+    check('fiche différente du modèle rouverte puis enregistrée sans changement : aucune question', 'Appliquer aux mois suivants' not in pg.inner_text('body') and brut()[4] == 1200)
+    # corriger une fiche ponctuelle dont la ligne diffère déjà : la question compare à la valeur de la fiche
+    pg.evaluate("(m) => openSlip(m)", mm[-1])
+    pg.fill('#modal .pa-a[data-k="%s"]' % ids[0], '1250')
+    pg.click('[data-a=saveslip]')
+    check('la question compare à la valeur de la fiche (1 200 → 1 250)', '1 200,00 € → 1 250,00 €' in norm(pg.inner_text('#modal')))
+    pg.click('[data-a=paipback]')
+    pg.click('[data-a=closem]')
+    # prime : jamais de question
+    pg.evaluate("(m) => openSlip(m)", mm[0])
+    pg.click('[data-a=paaddx]')
+    pg.fill('#modal .pa-xl', 'Prime test')
+    pg.fill('#modal .pa-xa', '200')
+    pg.click('[data-a=saveslip]')
+    check('ligne ponctuelle : jamais de question, pas de propagation', 'Appliquer aux mois suivants' not in pg.inner_text('body') and any(r['k'].startswith('x:') for r in etat_paie(pg)['slips'][mm[0]]['rows']))
+    check('une prime ne change pas le modèle', len(etat_paie(pg)['lines']) == 2)
+    # fiche nouvelle : la correction vaut pour la suite
+    pg.evaluate("(m) => { delete S.paie.slips[m]; render(); }", mm[0])
+    pg.click('[data-a=paiopen][data-m="%s"]' % mm[0])
+    pg.fill('#modal .pa-a[data-k="%s"]' % ids[0], '1600')
+    pg.click('[data-a=saveslip]')
+    t = norm(pg.inner_text('#modal'))
+    check('fiche nouvelle : question posée, sans mention de fiches suivantes (aucune)', 'Appliquer aux mois suivants' in t and 'fiche' not in t.split('Brut', 1)[1].split('Motif')[0], t)
+    pg.click('[data-a=paipropag]')
+    check('fiche nouvelle enregistrée, mois suivants pré-remplis à 1600', etat_paie(pg)['slips'][mm[0]]['rows'][0]['amount'] == 1600 and pg.evaluate("(m) => paRowsFromModel(m)[0].amount", mm[1]) == 1600)
+    # même règle depuis la fenêtre de la ligne du modèle
+    msgs.clear()
+    pg.click('[data-a=paiedit][data-id="%s"]' % ids[0])
+    pg.fill('#pl_amt', '2000')
+    pick(pg, 'pl_from', mm[-2])
+    pg.click('[data-a=savepaline]')
+    check('fenêtre de la ligne : confirmation avec le nombre de fiches touchées (3)', msgs and msgs[0].startswith('3 fiches déjà validées') and 'passeront' in msgs[0], msgs)
+    check('fiches du mois choisi et suivantes au nouveau montant, précédentes inchangées', [etat_paie(pg)['slips'][mm[j]]['rows'][0]['amount'] for j in range(-5, 1)] == [1000, 1000, 1000, 2000, 2000, 2000], brut())
+    check('aucune erreur JavaScript', not pg.errors, pg.errors)
+
+
 def test_validation_ligne(browser):
     print('Formulaire d\'une ligne : contrôles')
     pg = device(browser, FauxSupabase())
@@ -285,6 +374,7 @@ def main():
         T.PUMP[0] = None
         test_donnees(browser)
         test_parcours(browser)
+        test_propagation(browser)
         test_validation_ligne(browser)
         test_sync(browser)
         browser.close()

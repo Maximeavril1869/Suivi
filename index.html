@@ -116,7 +116,7 @@ const KEY='compte-salaire-v1';
 /* Épargne bloquée et Bien : comptent dans le patrimoine net seulement. Jamais dans le reste à vivre, le budget du jour, les soldes des comptes cochés ni « Sortir du découvert », et on n'y saisit pas de lignes : on met à jour leur valeur (solde de référence). */
 const ILLIQ={bloque:1,bien:1};
 const isLiquid=a=>!ILLIQ[a.type];
-const APP_VERSION='36';   // identique au numéro de la constante V de sw.js (compte-v36) : à incrémenter ensemble à chaque livraison
+const APP_VERSION='37';   // identique au numéro de la constante V de sw.js (compte-v37) : à incrémenter ensemble à chaque livraison
 const CATS={
  'Revenus':['Salaire','Primes','Remboursements','Intérêts','Autres revenus'],
  'Logement':['Loyer / crédit','Charges','Énergie','Internet / téléphone','Assurance habitation','Travaux / mobilier'],
@@ -888,6 +888,13 @@ function paChange(hist,cur,from,amt,note){
  const e={from,amount:amt};if(note)e.note=note;h.push(e);
  return h.sort((x,y)=>x.from<y.from?-1:x.from>y.from?1:0);
 }
+function paLaterSlips(id,from){return Object.keys(S.paie.slips).filter(m=>m>=from&&S.paie.slips[m].rows.some(r=>r.k===id)).sort();}
+/* Nouveau montant d'une ligne du modèle à partir d'un mois (comme changeAmount des récurrences) : historique daté, et les fiches déjà validées de ce mois et des suivants passent au nouveau montant. cur = montant du modèle avant le changement. */
+function paApply(l,from,amt,note,cur){
+ l.hist=paChange(l.hist,cur,from,amt,note);
+ l.amount=paAmt(l,monthOf(today()));
+ paLaterSlips(l.id,from).forEach(m=>S.paie.slips[m].rows.forEach(r=>{if(r.k===l.id)r.amount=amt;}));
+}
 const paShort=m=>{const [y,mm]=m.split('-').map(Number);return new Date(y,mm-1,1).toLocaleDateString('fr-FR',{month:'short',year:'2-digit'});};
 function paPick(id,val,opt){
  let p=/^\d{4}-\d{2}$/.test(val||'')?val.split('-').map(Number):null;
@@ -993,18 +1000,18 @@ function paieHTML(){
 function paXRow(r){
  return `<div class="pa-x" data-k="${esc(r.k||'')}" data-l="${esc(r.label||'')}"><input class="pa-xl" placeholder="Libellé (ex. Prime exceptionnelle)" value="${esc(r.label||'')}"><div class="pk2"><select class="pa-xk">${Object.keys(PA_KINDS).map(k=>`<option value="${k}"${(r.kind||'gain')===k?' selected':''}>${PA_KINDS[k]}</option>`).join('')}</select><input class="pa-xa" inputmode="decimal" placeholder="Montant" value="${r.amount===undefined||r.amount===''?'':esc(paNum(r.amount))}"></div></div>`;
 }
-function openSlip(ym){
+function openSlip(ym,over){
  const old=S.paie.slips[ym],isNew=!old;
  const ids=new Set(S.paie.lines.map(l=>l.id));
- let rows=old?old.rows.map(r=>Object.assign({},r)):paRowsFromModel(ym);
+ let rows=over?over.map(r=>Object.assign({},r)):old?old.rows.map(r=>Object.assign({},r)):paRowsFromModel(ym);
  const model=[],extra=rows.filter(r=>!ids.has(r.k));
  S.paie.lines.forEach(l=>{
-  if(old){const r=rows.find(x=>x.k===l.id);if(r)model.push(r);else if(paActive(l,ym))model.push({k:l.id,label:l.label,kind:l.kind,amount:''});}
-  else if(paActive(l,ym))model.push(rows.find(x=>x.k===l.id));
+  const r=rows.find(x=>x.k===l.id);
+  if(r)model.push(r);else if(paActive(l,ym))model.push({k:l.id,label:l.label,kind:l.kind,amount:''});
  });
  txCtx={pm:ym};
  openModal(`<h3>Bulletin de ${esc(monthLabel(ym))}</h3>
- <p class="s" style="margin-top:-6px">${isNew?'Montants du modèle : corrige ce qui a changé. ':''}Laisse un champ vide si la ligne n'existe pas ce mois-ci.</p>
+ <p class="s" style="margin-top:-6px">${isNew?'Montants du modèle : corrige ce qui a changé. ':''}Laisse un champ vide si la ligne n'existe pas ce mois-ci. Si tu changes un montant, l'app te demandera s'il vaut aussi pour les mois suivants.</p>
  ${model.map(r=>`<label>${esc(r.label)} <span class="s">· ${esc(PA_KINDS[r.kind])}</span><input class="pa-a" data-k="${esc(r.k)}" inputmode="decimal" value="${r.amount===''?'':esc(paNum(r.amount))}"></label>`).join('')}
  <b style="display:block;margin:6px 0">Lignes ponctuelles (prime…)</b>
  <div id="pa_x">${extra.map(paXRow).join('')}</div>
@@ -1033,8 +1040,37 @@ function saveSlip(){
   rows.push({k,label,kind:el.querySelector('.pa-xk').value,amount:paR2(Math.abs(a))});
  }
  if(!rows.length){alert('Aucun montant saisi.');return;}
+ // montants du modèle changés ce mois-ci : pour une fiche existante, on compare à sa valeur d'avant ; pour une nouvelle, au montant du modèle
+ const before=S.paie.slips[ym],changed=[];
+ rows.forEach(r=>{
+  const l=byId[r.k];if(!l||!paActive(l,ym))return;
+  const prev=before?before.rows.find(x=>x.k===r.k):null,base=prev?prev.amount:paAmt(l,ym);
+  if(Math.abs(r.amount-base)>=0.005)changed.push({k:l.id,label:l.label,old:base,amt:r.amount,later:paLaterSlips(l.id,ym).filter(m=>m>ym).length});
+ });
+ if(changed.length){txCtx.pstash={ym,rows,changed};openPropag();return;}
+ paCommit(ym,rows);
+}
+function paCommit(ym,rows){
  S.paie.slips[ym]={rows};S.paie.skips=S.paie.skips.filter(m=>m!==ym);
  save();closeModal();render();
+}
+function openPropag(){
+ const {ym,changed}=txCtx.pstash;
+ openModal(`<h3>Appliquer aux mois suivants ?</h3>
+ <p class="s" style="margin-top:-6px">Bulletin de ${esc(monthLabel(ym))}. « À partir de ce mois » change le modèle : les mois suivants, déjà validés ou à venir, prennent ce montant. « Ce mois seulement » convient à une variation ponctuelle.</p>
+ ${changed.map((c,i)=>`<div class="pa-x"><b>${esc(c.label)}</b><div class="s">${paFmt(c.old)} € → ${paFmt(c.amt)} €</div><div class="seg" style="margin-top:6px"><label><input type="radio" name="pp_${i}" value="from" checked>À partir de ce mois</label><label><input type="radio" name="pp_${i}" value="one">Ce mois seulement</label></div>${c.later?`<p class="s" style="margin-top:-4px">${c.later} fiche${c.later>1?'s':''} déjà validée${c.later>1?'s':''} après ce mois ${c.later>1?'passeront':'passera'} à ${paFmt(c.amt)} € (avec « À partir de ce mois »).</p>`:''}</div>`).join('')}
+ <label>Motif du changement (facultatif : échelon, grade…)<input id="pp_note" placeholder="ex. Passage à l'échelon 5"></label>
+ <div class="btns"><button class="ghost" data-a="paipback">Retour</button><button class="primary" data-a="paipropag">Enregistrer</button></div>`);
+}
+function paPropagApply(){
+ const {ym,rows,changed}=txCtx.pstash,note=$('pp_note').value.trim();
+ changed.forEach((c,i)=>{
+  const el=document.querySelector('#modal input[name=pp_'+i+']:checked');
+  if(!el||el.value!=='from')return;
+  const l=S.paie.lines.find(x=>x.id===c.k);if(!l)return;
+  paApply(l,ym,c.amt,note,l.amount);
+ });
+ paCommit(ym,rows);
 }
 function openPaLine(id){
  const l=id?S.paie.lines.find(x=>x.id===id):null;
@@ -1045,7 +1081,7 @@ function openPaLine(id){
  <label>Libellé (comme sur ton bulletin)<input id="pl_lab" value="${esc(d.label)}"></label>
  <label>Type<select id="pl_kind">${Object.keys(PA_KINDS).map(k=>`<option value="${k}"${d.kind===k?' selected':''}>${PA_KINDS[k]}</option>`).join('')}</select></label>
  <label>Montant mensuel (€), tel qu'imprimé sur le bulletin<input id="pl_amt" inputmode="decimal" value="${l?esc(paNum(cur)):''}"></label>
- ${l?`<div id="pl_fromw" style="display:none"><label>Nouveau montant à partir du mois de${paPick('pl_from',monthOf(today()))}</label><label>Motif (facultatif : échelon, grade…)<input id="pl_note" placeholder="ex. Passage à l'échelon 5"></label><p class="s" style="margin-top:-6px">Les fiches déjà validées ne changent pas ; les mois pas encore validés prennent le nouveau montant.</p></div>`:''}
+ ${l?`<div id="pl_fromw" style="display:none"><label>Nouveau montant à partir du mois de${paPick('pl_from',monthOf(today()))}</label><label>Motif (facultatif : échelon, grade…)<input id="pl_note" placeholder="ex. Passage à l'échelon 5"></label><p class="s" style="margin-top:-6px">Ce mois et les suivants prennent le nouveau montant, fiches déjà validées comprises. Les mois d'avant gardent l'ancien.</p></div>`:''}
  <label>Première fiche${paPick('pl_start',d.start)}</label>
  <label>Dernière fiche (facultatif)${paPick('pl_end',d.end,true)}</label>
  <div class="btns"><button class="ghost" data-a="closem">Annuler</button><button class="primary" data-a="savepaline">Enregistrer</button></div>
@@ -1063,8 +1099,9 @@ function savePaLine(){
  if(old&&Math.abs(amt-txCtx.pcur)>0.004){
   const from=paPickVal('pl_from');if(!from){alert("Indique le mois à partir duquel le nouveau montant s'applique.");return;}
   const note=$('pl_note').value.trim();
-  l.hist=paChange(old.hist,txCtx.pcur,from,amt,note);
-  l.amount=paAmt(l,monthOf(today()));
+  const n=paLaterSlips(old.id,from).length;
+  if(n&&!confirm(n+' fiche'+(n>1?'s':'')+' déjà validée'+(n>1?'s':'')+' à partir de '+monthLabel(from)+' '+(n>1?'passeront':'passera')+' à '+paFmt(amt)+' €. Continuer ?'))return;
+  paApply(l,from,amt,note,txCtx.pcur);
  }
  if(old)S.paie.lines[S.paie.lines.findIndex(x=>x.id===old.id)]=l;else S.paie.lines.push(l);
  save();closeModal();render();
@@ -1440,6 +1477,8 @@ function act(a,ds){
  else if(a==='delpaline'){if(confirm('Supprimer cette ligne du modèle ? Les fiches déjà validées sont conservées.')){S.paie.lines=S.paie.lines.filter(x=>x.id!==txCtx.plid);save();closeModal();render();}}
  else if(a==='paaddx'){$('pa_x').insertAdjacentHTML('beforeend',paXRow({kind:'gain'}));}
  else if(a==='saveslip')saveSlip();
+ else if(a==='paipropag')paPropagApply();
+ else if(a==='paipback'){const st=txCtx.pstash;openSlip(st.ym,st.rows);}
  else if(a==='delslip'){if(confirm('Supprimer la fiche de '+monthLabel(txCtx.pm)+' ?')){delete S.paie.slips[txCtx.pm];save();closeModal();render();}}
  else if(a==='editpay')openPay(ds.m);
  else if(a==='savepay')savePay();

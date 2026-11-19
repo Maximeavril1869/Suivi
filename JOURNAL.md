@@ -5,7 +5,7 @@ Les entrées les plus récentes sont en haut. À chaque intervention, ajouter un
 
 ## État actuel (2026-11-19)
 
-- **Version 36** : module **Bulletin de paye** (suivi de l'évolution de chaque ligne du bulletin, à part des comptes ; nouvelle suite `tests/test_paie.py`, 11 suites, toutes vertes). **À valider sur iPhone et iPad** : la vue (page ouverte depuis Récurrent), les sélecteurs de mois (deux listes), le tableau à trois mois. Version 35 (audit des débordements d'écran : grilles de l'Accueil, bannière Hors ligne ; nouvelle suite `tests/test_debordements.py`, 10 suites, toutes vertes) ; version 34 (champs date iPhone) ; version 33 : patrimoine net (carte repliée sur l'Accueil), types « Épargne bloquée » et « Bien ». 9 suites de tests, toutes vertes (`tests/test_patrimoine.py` : 37 vérifications). Points ouverts : voir l'entrée du 2026-11-19.
+- **Version 37** : Bulletin de paye, **un changement de montant vaut pour les mois suivants** (comme les récurrences) ; 252 vérifications d'affichage et 106 sur le module. **Version 36** : module **Bulletin de paye** (suivi de l'évolution de chaque ligne du bulletin, à part des comptes ; nouvelle suite `tests/test_paie.py`, 11 suites, toutes vertes). **À valider sur iPhone et iPad** : la vue (page ouverte depuis Récurrent), les sélecteurs de mois (deux listes), le tableau à trois mois. Version 35 (audit des débordements d'écran : grilles de l'Accueil, bannière Hors ligne ; nouvelle suite `tests/test_debordements.py`, 10 suites, toutes vertes) ; version 34 (champs date iPhone) ; version 33 : patrimoine net (carte repliée sur l'Accueil), types « Épargne bloquée » et « Bien ». 9 suites de tests, toutes vertes (`tests/test_patrimoine.py` : 37 vérifications). Points ouverts : voir l'entrée du 2026-11-19.
 
 ### Rappel de l'état au 2026-11-16
 
@@ -21,6 +21,15 @@ Les entrées les plus récentes sont en haut. À chaque intervention, ajouter un
 - Service worker en version `compte-v17`.
 - Reste à faire : tester l'import CSV avec l'export réel de la banque (point en attente depuis la première version).
 - Aucune donnée réelle n'est stockée dans le dépôt.
+
+## 2026-11-19 — Bulletin de paye : un changement vaut pour les mois suivants (version 37)
+
+- Retour de l'utilisateur : « modifier une écriture et que la modification court pour les suivantes » (mois 1 = 1000, mois 3 passé à 1500 : les mois 4, 5, 6… passent à 1500). Cela **remplace** mon choix de la version 36 (les fiches validées ne changeaient pas).
+- Choix de l'utilisateur : (1) la propagation est proposée, « ce mois seulement » restant possible pour une variation ponctuelle ; (2) pas de règle compliquée : il reprend ses bulletins dans l'ordre, donc les fiches suivantes déjà validées sont simplement écrasées ; (3) les lignes ponctuelles (primes) ne se propagent jamais.
+- Réalisé : à l'enregistrement d'une fiche, si le montant d'une ligne du modèle diffère de sa valeur d'avant (fiche existante) ou du modèle (fiche nouvelle), une seconde fenêtre (`openPropag`) demande pour chaque ligne « À partir de ce mois » (choix par défaut) ou « Ce mois seulement », avec le nombre de fiches suivantes touchées et un motif facultatif ; « Retour » rouvre la fiche avec les valeurs saisies. « À partir de ce mois » (`paApply`) ajoute l'entrée datée à l'historique du modèle et met à jour les fiches validées de ce mois et des suivants ; les mois à venir sont pré-remplis au nouveau montant. Même règle depuis la fenêtre d'une ligne du modèle (avec confirmation du nombre de fiches touchées, comme les récurrences).
+- Une fiche rouverte et enregistrée sans toucher à un montant ne pose aucune question (comparaison avec la valeur de la fiche, pas avec le modèle) : une variation ponctuelle déjà saisie n'est pas « corrigée » par erreur.
+- Limite connue : un changement daté enregistré plus tard dans l'historique (un échelon au mois 6, par exemple) est écrasé par une correction faite au mois 3, comme pour les récurrences.
+- Tests : 20 vérifications de plus dans `tests/test_paie.py` (106), la nouvelle fenêtre ajoutée à `tests/test_debordements.py` (252) ; les autres suites inchangées et vertes.
 
 ## 2026-11-19 — Module Bulletin de paye (version 36)
 
