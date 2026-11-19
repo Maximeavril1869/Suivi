@@ -102,7 +102,7 @@ td,th{padding:4px;border-bottom:1px solid var(--line);text-align:left}
 <div id="offbar" role="status" aria-live="polite" hidden>Hors ligne : tes modifications sont gardées sur cet appareil</div>
 <script>
 const KEY='compte-salaire-v1';
-const APP_VERSION='28';   // identique au numéro de la constante V de sw.js (compte-v28) : à incrémenter ensemble à chaque livraison
+const APP_VERSION='29';   // identique au numéro de la constante V de sw.js (compte-v29) : à incrémenter ensemble à chaque livraison
 const CATS={
  'Revenus':['Salaire','Primes','Remboursements','Intérêts','Autres revenus'],
  'Logement':['Loyer / crédit','Charges','Énergie','Internet / téléphone','Assurance habitation','Travaux / mobilier'],
@@ -112,7 +112,7 @@ const CATS={
  'Animaux':['Alimentation','Vétérinaire / pharmacie','Assurance / mutuelle','Toilettage / garde','Accessoires / jouets'],
  'Loisirs':['Restaurants / bars','Sorties','Abonnements','Voyages / vacances','Shopping'],
  'Finances':['Épargne','Impôts','Frais bancaires','Crédits'],
- 'Divers':['Cadeaux','Imprévus','Non classé']
+ 'Divers':['Cadeaux','Imprévus','Retrait d\'espèces','Non classé']
 };
 const RK='Loisirs|Restaurants / bars';
 const defaultState=()=>({v:2,accounts:[{id:'a1',name:'Compte salaire',type:'courant',opening:0,cash:true}],shown:['a1'],tx:[],rec:[],plans:[],rules:[],budgets:{},payDates:{},csvMaps:{},skips:[],lastExport:null,bk:{since:null,snooze:null,every:7}});
@@ -513,6 +513,41 @@ function savePay(){
  if(v===payRule(txCtx.pm))delete S.payDates[txCtx.pm];else S.payDates[txCtx.pm]=v;
  save();closeModal();render();
 }
+/* ---------- Découvert autorisé et plafonds de carte (compte courant) ----------
+   Disponible par carte = solde + découvert autorisé (jamais négatif), limité par ce qui reste du plafond de paiement sur la période glissante ;
+   disponible en retrait = idem avec le plafond de retrait. Au-delà du découvert autorisé, le disponible tombe à 0 (règle de l'app : la banque peut en plus facturer des frais ou limiter la carte).
+   Le découvert n'entre JAMAIS dans le budget du jour ni dans le reste à vivre : c'est une limite à ne pas atteindre. */
+const RETRAIT="Retrait d'espèces";
+function cardInfo(a,now){
+ const r2=n=>Math.round(n*100)/100,od=a.od||0,bal=accBalance(a.id,now),margin=r2(bal+od);
+ const ids=new Set([a.id].concat(S.accounts.filter(x=>x.type==='differe'&&x.debitAcc===a.id).map(x=>x.id)));
+ const lines=S.tx.filter(t=>ids.has(t.acc)&&t.amount<0&&!t.xfer&&!t.recKey);
+ const spent=(days,wd)=>r2(-lines.filter(t=>t.date>addDays(now,-days)&&t.date<=now&&((t.sub===RETRAIT)===wd)).reduce((s,t)=>s+t.amount,0));
+ const mk=(lim,days,wd)=>lim?{lim,days,spent:spent(days,wd),left:Math.max(0,r2(lim-spent(days,wd)))}:null;
+ const pay=mk(a.payLim,a.payDays||30,false),wd=mk(a.wdLim,a.wdDays||7,true);
+ const availBank=Math.max(0,margin);
+ const cyc=payCycle(now);let run=bal,min=bal,minDate=now;
+ dueRange(cyc.from,cyc.to).filter(x=>x.r.acc===a.id).sort((x,y)=>x.d<y.d?-1:x.d>y.d?1:0).forEach(x=>{run=r2(run+x.amount);if(run<min){min=run;minDate=x.d<now?now:x.d;}});
+ return{od,bal,margin,over:margin<0?-margin:0,pay,wd,availBank,availCard:pay?Math.min(availBank,pay.left):availBank,availCash:wd?Math.min(availBank,wd.left):availBank,
+  end:run,min,minDate,projOver:min+od<-0.005,to:cyc.to};
+}
+function cardsHTML(now){
+ return S.accounts.filter(a=>a.type==='courant'&&S.shown.includes(a.id)&&(a.od||a.payLim||a.wdLim)).map(a=>{
+  const c=cardInfo(a,now),sr=(l,v,cls)=>`<div class="sr"><span>${l}</span><span class="${cls||''}">${v}</span></div>`;
+  const state=c.over>0?'Découvert dépassé':c.bal<0?'À découvert':c.projOver?'Dépassement prévu':'Dans les limites';
+  const bad=c.over>0||c.projOver;
+  let h=`<div class="card ${bad?'warn':''}"><b>${esc(accName(a.id))}</b> <span class="s">· ${state}</span><div style="margin-top:6px">`;
+  h+=sr('Solde',fmt(c.bal),c.bal<0?'neg':'');
+  if(c.od){h+=sr('Découvert autorisé',fmt(c.od));h+=c.over>0?sr('Dépassement',fmt(c.over),'neg'):sr('Marge avant la limite',fmt(Math.max(0,c.margin)));}
+  if(c.pay)h+=sr('Paiement ('+c.pay.days+' j)',fmt(c.pay.left)+' restants')+`<div class="s" style="text-align:right">sur un plafond de ${fmt(c.pay.lim)}</div>`;
+  if(c.wd)h+=sr('Retrait ('+c.wd.days+' j)',fmt(c.wd.left)+' restants')+`<div class="s" style="text-align:right">sur un plafond de ${fmt(c.wd.lim)}</div>`;
+  h+=`<div class="sr" style="margin-top:4px"><b>Disponible par carte</b><b class="${c.availCard<=0?'neg':'pos'}">${fmt(c.availCard)}</b></div>`;
+  if(c.wd)h+=`<div class="sr"><b>Disponible en retrait</b><b class="${c.availCash<=0?'neg':'pos'}">${fmt(c.availCash)}</b></div>`;
+  if(c.min<0||c.projOver)h+=`<div class="s" style="margin-top:6px">Solde le plus bas prévu avant le ${c.to.slice(8)}/${c.to.slice(5,7)} : <b class="${c.projOver?'neg':''}">${fmt(c.min)}</b> le ${c.minDate.slice(8)}/${c.minDate.slice(5,7)}${c.projOver?' — au-delà de ton autorisation':''}</div>`;
+  if(c.over>0)h+=`<div class="s" style="margin-top:6px">Au-delà du découvert autorisé, les paiements par carte risquent d'être refusés et des frais peuvent s'ajouter.</div>`;
+  return h+'</div></div>';
+ }).join('');
+}
 function homeHTML(){
  const now=today(),cur=monthOf(now);
  const R=range(),st=statsRange(R.from,R.to);
@@ -522,7 +557,7 @@ function homeHTML(){
  if(!S.tx.length){
   h+=`<div class="card"><b>Pour démarrer</b><ol class="mut" style="margin:6px 0 0;padding-left:20px"><li>Réglages : crée tes comptes et indique leur solde actuel.</li><li>Import : charge le CSV de ta banque.</li><li>Récurrent : ajoute loyer, salaire, abonnements.</li></ol></div>`;
  }
- h+=accBar()+budgetCardHTML(now)+monthNav();
+ h+=accBar()+budgetCardHTML(now)+cardsHTML(now)+monthNav();
  let proj,projLabel;
  const lastD=R.to.length===10&&per!=='month'?R.to:R.to.slice(0,7)+'-31';
  if(now>=R.from&&now<=R.to){proj=balNow+due.filter(x=>!x.noproj).reduce((a,x)=>a+x.amount,0);projLabel='Solde prévu fin '+{day:'de journée',week:'de semaine',month:'de mois',year:'d\'année'}[per];}
@@ -739,7 +774,7 @@ function setHTML(){
  const budOpts=Object.keys(CATS).filter(c=>c!=='Revenus').map(c=>`<option value="${esc(c)}">${esc(c)} (toute la catégorie)</option>`+CATS[c].map(s=>`<option value="${esc(c+'|'+s)}">${esc(c)} › ${esc(s)}</option>`).join('')).join('');
  const buds=Object.keys(S.budgets).map(k=>`<div class="row"><div class="m">${esc(k.replace('|',' › '))}</div><div>${fmt(S.budgets[k])}</div><button class="ghost small" data-a="delbudget" data-key="${esc(k)}">Retirer</button></div>`).join('')||'<p class="mut">Aucun budget.</p>';
  const rules=S.rules.map((r,i)=>`<div class="row" data-a="editrule" data-kw="${esc(r.kw)}"><div class="m"><div class="l">${esc(r.kw)}</div><div class="s">${esc(r.cat)} › ${esc(r.sub)}${r.payee?' · '+esc(r.payee):''}</div></div><div style="display:flex;gap:6px"><button class="ghost small" data-a="ruleup" data-kw="${esc(r.kw)}" aria-label="Monter" ${i===0?'disabled':''}>▲</button><button class="ghost small" data-a="ruledown" data-kw="${esc(r.kw)}" aria-label="Descendre" ${i===S.rules.length-1?'disabled':''}>▼</button></div></div>`).join('')||'<p class="mut">Aucune règle. Ajoute-en une, ou elles se créent quand tu corriges une catégorie.</p>';
- const accRow=a=>`<div class="row" data-a="editacc" data-id="${esc(a.id)}"><div class="m"><div class="l">${esc(a.name)}</div><div class="s">${esc(ACC_TYPES[a.type]||a.type)}${a.cash?'':' · hors reste à vivre'}${a.type==='differe'&&a.debitAcc?' · prélevée sur '+esc(accName(a.debitAcc))+' le '+a.debitDay+' · en attente '+fmt(Math.max(0,-accBalance(a.id,today()))):''}${a.type==='credit'?(()=>{const c=creditInfo(a);return ' · plafond '+fmt(c.lim)+' · dû '+fmt(c.due)+' · disponible '+fmt(c.avail);})():''}</div></div><div class="a ${accBalance(a.id)<0?'neg':''}">${fmt(accBalance(a.id))}</div></div>`;
+ const accRow=a=>`<div class="row" data-a="editacc" data-id="${esc(a.id)}"><div class="m"><div class="l">${esc(a.name)}</div><div class="s">${esc(ACC_TYPES[a.type]||a.type)}${a.cash?'':' · hors reste à vivre'}${a.type==='differe'&&a.debitAcc?' · prélevée sur '+esc(accName(a.debitAcc))+' le '+a.debitDay+' · en attente '+fmt(Math.max(0,-accBalance(a.id,today()))):''}${a.type==='courant'&&a.od?' · découvert autorisé '+fmt(a.od):''}${a.type==='credit'?(()=>{const c=creditInfo(a);return ' · plafond '+fmt(c.lim)+' · dû '+fmt(c.due)+' · disponible '+fmt(c.avail);})():''}</div></div><div class="a ${accBalance(a.id)<0?'neg':''}">${fmt(accBalance(a.id))}</div></div>`;
 const grp=[];S.accounts.forEach(a=>{const g=a.group||'';let e=grp.find(x=>x.g===g);if(!e){e={g,l:[]};grp.push(e);}e.l.push(a);});
  const multi=grp.length>1||(grp[0]&&grp[0].g);
  const accs=grp.map(e=>multi?`<details class="fold grp" data-fold="${esc('g:'+e.g)}"${foldOpen('g:'+e.g,false)?' open':''}><summary><b>${esc(e.g||'Sans organisme')}</b><span class="s">${fmt(e.l.reduce((t,a)=>t+accBalance(a.id),0))}</span></summary>${e.l.map(accRow).join('')}</details>`:e.l.map(accRow).join('')).join('');
@@ -849,6 +884,14 @@ function openAcc(id){
  <label>Nom du compte<input id="ac_name" value="${esc(d.name)}" placeholder="ex. Compte courant, LDD, Livret A"></label>
  <label>Type<select id="ac_type">${Object.keys(ACC_TYPES).map(k=>`<option value="${k}" ${k===d.type?'selected':''}>${ACC_TYPES[k]}</option>`).join('')}</select></label>
  <div id="ac_difw" style="display:${d.type==='differe'?'block':'none'}"><label>Compte débité chaque mois<select id="ac_dacc">${S.accounts.filter(x=>x.id!==d.id&&x.type!=='differe'&&x.type!=='credit'&&x.type!=='emprunt').map(x=>`<option value="${esc(x.id)}" ${d.debitAcc===x.id?'selected':''}>${esc(accName(x.id))}</option>`).join('')}</select></label><label>Jour du prélèvement (1 à 31)<input id="ac_dday" type="number" min="1" max="31" inputmode="numeric" value="${d.debitDay||''}" placeholder="ex. 28"></label></div>
+ <div id="ac_odw" style="display:${d.type==='courant'?'block':'none'}">
+  <label>Autorisation de découvert (€) — vide = aucune<input id="ac_od" inputmode="decimal" value="${d.od?String(d.od).replace('.',','):''}" placeholder="ex. 500"></label>
+  <label>Plafond de paiement par carte (€) — vide = non suivi<input id="ac_pl" inputmode="decimal" value="${d.payLim?String(d.payLim).replace('.',','):''}" placeholder="ex. 2000"></label>
+  <label>… sur combien de jours glissants<input id="ac_pld" inputmode="numeric" value="${d.payDays||30}"></label>
+  <label>Plafond de retrait par carte (€) — vide = non suivi<input id="ac_wl" inputmode="decimal" value="${d.wdLim?String(d.wdLim).replace('.',','):''}" placeholder="ex. 300"></label>
+  <label>… sur combien de jours glissants<input id="ac_wld" inputmode="numeric" value="${d.wdDays||7}"></label>
+  <p class="s" style="margin-top:-6px">Les paiements par carte sont les dépenses de ce compte (et de ses cartes à débit différé), hors virements et lignes de récurrences. Classe tes retraits en Divers › Retrait d'espèces pour qu'ils comptent dans le plafond de retrait.</p>
+ </div>
  <div id="ac_limw" style="display:${d.type==='credit'?'block':'none'}"><label>Plafond de crédit autorisé (€)<input id="ac_lim" inputmode="decimal" value="${d.limit?String(d.limit).replace('.',','):''}" placeholder="ex. 3000"></label></div>
  <label style="display:flex;align-items:center;gap:10px;color:var(--tx)"><input type="checkbox" id="ac_cash" ${d.cash?'checked':''} style="width:22px;height:22px;margin:0;padding:0">Compter dans le reste à vivre</label>
  <label>Date du solde de référence<input id="ac_bdate" type="date" value="${esc(d.anchor?d.anchor.date:today())}"></label>
@@ -867,6 +910,15 @@ function saveAcc(){
  else{a.name=name;a.type=type;a.cash=cash;}
  a.group=$('ac_group').value.trim();
  if(type==='credit'){const lim=parseAmount($('ac_lim').value);if(isNaN(lim)||lim<0){alert('Indique le plafond de crédit autorisé (ex. 3000).');if(!txCtx.aid){S.accounts=S.accounts.filter(x=>x!==a);S.shown=S.shown.filter(x=>x!==a.id);}return;}a.limit=Math.round(lim*100)/100;}else delete a.limit;
+ if(type==='courant'){
+  const get=(id,lab)=>{const t=$(id).value.trim();if(t==='')return 0;const v=parseAmount(t);if(isNaN(v)||v<0){alert(lab+' : montant invalide.');return null;}return Math.round(v*100)/100;};
+  const od=get('ac_od','Autorisation de découvert'),pl=od===null?null:get('ac_pl','Plafond de paiement'),wl=pl===null?null:get('ac_wl','Plafond de retrait');
+  const pd=parseInt($('ac_pld').value)||30,wd=parseInt($('ac_wld').value)||7;
+  if(od===null||pl===null||wl===null||pd<1||pd>365||wd<1||wd>365){if(pd<1||pd>365||wd<1||wd>365)alert('Le nombre de jours doit être compris entre 1 et 365.');if(!txCtx.aid){S.accounts=S.accounts.filter(x=>x!==a);S.shown=S.shown.filter(x=>x!==a.id);}return;}
+  if(od)a.od=od;else delete a.od;
+  if(pl){a.payLim=pl;a.payDays=pd;}else{delete a.payLim;delete a.payDays;}
+  if(wl){a.wdLim=wl;a.wdDays=wd;}else{delete a.wdLim;delete a.wdDays;}
+ }else{delete a.od;delete a.payLim;delete a.payDays;delete a.wdLim;delete a.wdDays;}
  if(type==='differe'){const dd=parseInt($('ac_dday').value),da=$('ac_dacc')?$('ac_dacc').value:'';if(!da||!(dd>=1&&dd<=31)){alert('Choisis le compte débité et le jour du prélèvement (1 à 31).');if(!txCtx.aid){S.accounts=S.accounts.filter(x=>x!==a);S.shown=S.shown.filter(x=>x!==a.id);}return;}a.debitAcc=da;a.debitDay=dd;}else{delete a.debitAcc;delete a.debitDay;}
  if(!isNaN(bal)){const bd=$('ac_bdate').value||today();a.anchor={date:bd,amount:Math.round(bal*100)/100};}
  save();closeModal();render();
@@ -1133,6 +1185,7 @@ document.addEventListener('change',e=>{
  else if(t.id==='r_start'&&$('r_day')&&$('r_freq').value==='monthly'){const dd=parseInt(t.value.slice(8));if(dd)$('r_day').value=dd;}
  else if(t.id==='imp_acc'){imp.acc=t.value;}
  else if(t.id==='ac_type'&&!txCtx.aid){$('ac_cash').checked=(t.value==='courant'||t.value==='differe');}
+ if(t.id==='ac_type'&&$('ac_odw'))$('ac_odw').style.display=t.value==='courant'?'block':'none';
  if(t.id==='ac_type'&&$('ac_limw')){$('ac_limw').style.display=t.value==='credit'?'block':'none';if(t.value==='credit'&&$('ac_cash'))$('ac_cash').checked=false;}
  if(t.id==='ac_type'&&$('ac_difw'))$('ac_difw').style.display=t.value==='differe'?'block':'none';
 });

@@ -51,6 +51,7 @@ Contenu de l'état `S` :
 | `plans` | Paiements en plusieurs fois : liste d'échéances mensuelles |
 | `rules` | Règles de classement automatique (mot-clé, catégorie, sous-catégorie, tiers facultatif), **dans l'ordre de priorité** : la première qui correspond l'emporte |
 | `budgets` | Budgets par catégorie ou sous-catégorie |
+| `accounts[].od`, `payLim`, `payDays`, `wdLim`, `wdDays` | Compte courant : autorisation de découvert, plafond de paiement par carte (et sa fenêtre glissante en jours, 30 par défaut), plafond de retrait (7 jours par défaut) ; absents = non suivis |
 | `payDates` | Dates de paie modifiées à la main, `{'AAAA-MM': 'AAAA-MM-JJ'}` ; absent = règle (voir « Budget du jour ») |
 | `csvMaps` | Correspondance de colonnes mémorisée par format de CSV |
 | `skips` | Échéances ignorées |
@@ -67,7 +68,7 @@ Navigation en bas, 5 vues (objet `VIEWS`) :
 
 | Vue | Fonction | Contenu |
 |---|---|---|
-| Accueil | `homeHTML` | Carte « Budget du jour », solde, graphique, répartition, bloc « Sortir du découvert », échéances à valider (le rappel de sauvegarde est en tête de toutes les vues) |
+| Accueil | `homeHTML` | Carte « Budget du jour », cartes de découvert et plafonds (`cardsHTML`), solde, graphique, répartition, bloc « Sortir du découvert », échéances à valider (le rappel de sauvegarde est en tête de toutes les vues) |
 | Lignes | `linesHTML` | Liste filtrable, sélection multiple et modification groupée |
 | Récurrent | `recHTML` | Échéances à valider, récurrences, paiements en plusieurs fois |
 | Import | `impHTML` | Import CSV avec choix des colonnes |
@@ -101,6 +102,16 @@ Carte en tête de l'Accueil (`budgetCardHTML`, calcul dans `budgetInfo(date)`), 
 - **Par jour** = (`B` + consommation du jour) ÷ jours restants, aujourd'hui compris ; **aujourd'hui** = par jour − consommation du jour ; **cette semaine** (lundi à dimanche, coupée à la fin de la période) = par jour × jours restants de la semaine − consommation du jour. La consommation du jour = dépenses (montants négatifs) datées d'aujourd'hui sur ces comptes, hors virements (`xfer`) et lignes issues d'une récurrence (`recKey`). Le recalage est automatique : ce qui n'est pas dépensé se répartit sur les jours suivants, ce qui est dépensé en plus les réduit.
 - Une carte de crédit hors « reste à vivre » ne change pas le budget ; ses remboursements prévus (récurrences) sont des dépenses à venir.
 
+## Découvert autorisé et plafonds de carte
+
+Pour chaque compte courant ayant au moins un de ces réglages (fiche du compte), l'Accueil affiche une carte (`cardsHTML`, calcul `cardInfo(compte, date)`), sous le budget du jour.
+
+- **Marge** = solde + autorisation de découvert. **Dépassement** = marge négative (solde sous −découvert).
+- **Disponible par carte** = marge (jamais négative) limitée par le plafond de paiement restant ; **disponible en retrait** = marge limitée par le plafond de retrait restant. Au-delà du découvert autorisé, le disponible est donc 0. Règle choisie par l'utilisateur ; la règle réelle de sa banque (réduction du plafond de carte, frais) n'est pas modélisée.
+- **Plafond restant** = plafond − dépenses de la fenêtre glissante (`payDays`, 30 j par défaut ; `wdDays`, 7 j) : dates > aujourd'hui − N jours et ≤ aujourd'hui. Compte comme paiement par carte : lignes négatives du compte et de ses cartes à débit différé rattachées, **hors** virements (`xfer`), lignes issues d'une récurrence (`recKey`) et retraits. Retrait = sous-catégorie `Divers › Retrait d'espèces` (constante `RETRAIT`). Approximation : un prélèvement importé non rapproché d'une récurrence compte comme paiement par carte.
+- **Prévision** : solde du jour + échéances à venir de la période (`dueRange`, y compris le prélèvement d'une carte à débit différé sur ce compte) ; la carte indique le solde le plus bas prévu, sa date, et « Dépassement prévu » s'il passe sous −découvert.
+- **Le découvert n'entre jamais** dans le budget du jour, le reste à vivre ni les totaux (choix de l'utilisateur : c'est une limite à ne pas atteindre).
+
 ## Menus repliables de Réglages
 
 - Chaque carte de Réglages est un `<details class="card fold">` produit par `foldCard(clé, titre, contenu, ouvertParDéfaut)`. Dans la carte Comptes, chaque organisme (champ « Organisme / groupe » d'un compte) est un `<details class="fold grp">` de clé `g:<nom>` ; le titre du groupe garde son solde. Sans organisme, ou avec un seul groupe sans nom, la liste des comptes reste plate comme avant.
@@ -111,7 +122,7 @@ Carte en tête de l'Accueil (`budgetCardHTML`, calcul dans `budgetInfo(date)`), 
 ## Mise à jour et déploiement
 
 - Hébergement : GitHub Pages à partir du dépôt (branche par défaut `main`).
-- Le service worker (`sw.js`) a une version de cache (constante `V`, actuellement `compte-v28`). **À chaque modification publiée, incrémenter cette version** pour que l'iPhone récupère la nouvelle app, **et la constante `APP_VERSION` de `index.html`** (même numéro : `22` pour `compte-v22`), affichée en bas de Réglages (« Mon Compte · version 22 ») pour vérifier quelle version tourne sur l'appareil.
+- Le service worker (`sw.js`) a une version de cache (constante `V`, actuellement `compte-v29`). **À chaque modification publiée, incrémenter cette version** pour que l'iPhone récupère la nouvelle app, **et la constante `APP_VERSION` de `index.html`** (même numéro : `22` pour `compte-v22`), affichée en bas de Réglages (« Mon Compte · version 22 ») pour vérifier quelle version tourne sur l'appareil.
 - Aucune étape de build : modifier `index.html`, commiter, pousser.
 
 ## Synchronisation chiffrée

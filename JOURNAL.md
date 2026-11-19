@@ -5,7 +5,7 @@ Les entrées les plus récentes sont en haut. À chaque intervention, ajouter un
 
 ## État actuel (2026-11-16)
 
-- App PWA locale d'abord (un seul fichier `index.html`), publiée sur GitHub Pages, utilisée sur iPhone et iPad. **Synchronisation chiffrée** (validée sur appareils le 2026-11-12), **rappel de sauvegarde partagé** (même logique que Plan du jour) et **bannière « Hors ligne »** ajoutés le 2026-11-12 (à valider sur iPhone et iPad). Service worker en version `compte-v28` (numéro affiché en bas de Réglages). **Réglages : menus repliables** depuis le 2026-11-17 (à valider sur iPhone et iPad).
+- App PWA locale d'abord (un seul fichier `index.html`), publiée sur GitHub Pages, utilisée sur iPhone et iPad. **Synchronisation chiffrée** (validée sur appareils le 2026-11-12), **rappel de sauvegarde partagé** (même logique que Plan du jour) et **bannière « Hors ligne »** ajoutés le 2026-11-12 (à valider sur iPhone et iPad). Service worker en version `compte-v29` (numéro affiché en bas de Réglages). **Réglages : menus repliables** depuis le 2026-11-17 (à valider sur iPhone et iPad).
 - Plan en 3 étapes entièrement présent dans le code : comptes multiples + virements, paiements en plusieurs fois, emprunts / livrets / cartes.
 - Reste à faire : tester l'import CSV avec l'export réel de la banque (point en attente depuis la première version) ; valider la synchronisation sur appareil.
 - Aucune donnée réelle n'est stockée dans le dépôt.
@@ -26,6 +26,15 @@ Les entrées les plus récentes sont en haut. À chaque intervention, ajouter un
 - Fait : `foldCard` et l'objet `FOLD` (`localStorage`, clé `compte-replis`) dans `index.html` ; `<details>` natifs. Service worker `compte-v23`, `APP_VERSION = '23'`.
 - Tests : `tests/test_replis.py` (34 vérifications) ; `go_settings` de `tests/test_sync.py` déplie désormais toutes les cartes pour que les anciens tests atteignent leurs champs ; les trois anciennes suites passent toujours (57, 50, 30).
 - Reste à valider sur iPhone et iPad.
+
+## 2026-11-19 — Autorisation de découvert, plafonds de carte, disponible réel (version 29)
+
+- Demande : enregistrer les plafonds (carte bancaire) et les autorisations de découvert ; l'utilisateur comprend qu'un dépassement du découvert impacte le plafond de la carte bancaire. Il précise que sa situation financière est tendue en ce moment (passager, à étudier plus tard) : le découvert ne doit donc pas gonfler le budget.
+- Décisions : enregistrer **autorisation de découvert, plafond de paiement et plafond de retrait** ; l'app **calcule un disponible réel** (solde + découvert, limité par le plafond de carte restant) ; le découvert **ne compte pas** dans le budget du jour ni le reste à vivre (« limite à ne pas atteindre », option recommandée).
+- Fait : champs sur la fiche d'un compte courant (`od`, `payLim`/`payDays`, `wdLim`/`wdDays`, fenêtres de 30 et 7 jours modifiables) ; carte par compte sur l'Accueil (état, marge, plafonds restants, disponible par carte et en retrait, solde le plus bas prévu avant la paie, alerte de dépassement) ; sous-catégorie **Divers › Retrait d'espèces** ; mention « découvert autorisé » dans la liste des comptes. Les champs voyagent avec `accounts` (synchronisés). Service worker `compte-v29`, `APP_VERSION = '29'`.
+- Tests : `tests/test_decouvert_plafonds.py` (37 vérifications) ; toutes les autres suites passent.
+- Limites connues : la règle réelle de la banque (réduction du plafond de carte après dépassement, frais) n'est pas modélisée — au-delà du découvert, l'app met simplement le disponible à 0 ; un prélèvement importé non rapproché d'une récurrence compte comme paiement par carte ; les retraits n'entrent dans le plafond de retrait que s'ils sont classés en Retrait d'espèces.
+- Question restée ouverte : la règle exacte de la banque de l'utilisateur sur le plafond après un dépassement du découvert.
 
 ## 2026-11-18 (nuit) — Budget du jour façon Money Coach (version 28)
 
