@@ -22,7 +22,7 @@ def ligne(id_, date, amount, acc='a1', **extra):
     return t
 
 
-def etat(pg, solde=200, od=500, pl=800, wl=200, tx=None, rec=None, differe=False):
+def etat(pg, solde=200, od=500, pl=800, wl=200, tx=None, rec=None, differe=False, diff_anchor=None):
     a1 = {'id': 'a1', 'name': 'Compte test', 'type': 'courant', 'opening': 0, 'cash': True, 'anchor': {'date': '2020-01-01', 'amount': solde}}
     if od:
         a1['od'] = od
@@ -32,7 +32,10 @@ def etat(pg, solde=200, od=500, pl=800, wl=200, tx=None, rec=None, differe=False
         a1.update(wdLim=wl, wdDays=7)
     comptes = [a1]
     if differe:
-        comptes.append({'id': 'a3', 'name': 'Carte différée test', 'type': 'differe', 'opening': 0, 'cash': True, 'debitAcc': 'a1', 'debitDay': 5})
+        cb = {'id': 'a3', 'name': 'Carte différée test', 'type': 'differe', 'opening': 0, 'cash': True, 'debitAcc': 'a1', 'debitDay': 5}
+        if diff_anchor is not None:
+            cb['anchor'] = {'date': '2026-11-18', 'amount': diff_anchor}
+        comptes.append(cb)
     s = {'v': 2, 'accounts': comptes, 'shown': [c['id'] for c in comptes], 'tx': tx or [], 'rec': rec or [], 'plans': [], 'rules': [],
          'budgets': {}, 'payDates': {}, 'csvMaps': {}, 'skips': []}
     pg.evaluate("([k, v]) => localStorage.setItem(k, JSON.stringify(v))", [T.KEY, s])
@@ -56,20 +59,30 @@ def test_disponible(browser):
     etat(pg)
     c = info(pg)
     check('solde 200 + découvert 500 = 700 de marge', eq(c['margin'], 700) and c['over'] == 0, c)
-    check('rien dépensé : disponible par carte = 700 (le plafond 800 ne limite pas)', eq(c['availCard'], 700), c)
-    check('disponible en retrait = plafond de retrait 200 (limite la marge 700)', eq(c['availCash'], 200), c)
+    check('dans le découvert, seul le plafond limite : disponible par carte = plafond 800', eq(c['availCard'], 800), c)
+    check('disponible en retrait = plafond de retrait 200', eq(c['availCash'], 200), c)
     etat(pg, tx=[ligne('t1', '2026-11-10', -600)])
     c = info(pg)
-    check('600 payés : solde −400, marge 100, plafond restant 200 → disponible 100', eq(c['bal'], -400) and eq(c['availCard'], 100) and eq(c['pay']['left'], 200), c)
+    check('600 payés : solde −400 (dans le découvert), plafond restant 200 → disponible 200', eq(c['bal'], -400) and eq(c['availCard'], 200) and eq(c['pay']['left'], 200), c)
     etat(pg, od=500, pl=150, tx=[ligne('t1', '2026-11-10', -600)])
     c = info(pg)
     check('plafond de paiement épuisé (600 > 150) : disponible par carte = 0 malgré la marge', eq(c['pay']['left'], 0) and eq(c['availCard'], 0) and c['margin'] > 0, c)
     etat(pg, solde=-100, tx=[ligne('t1', '2026-11-10', -500)])
     c = info(pg)
-    check('solde −600 pour 500 autorisés : dépassement de 100, disponible 0', eq(c['over'], 100) and eq(c['availCard'], 0) and eq(c['availCash'], 0), c)
+    check('solde −600 pour 500 autorisés : dépassement 100, plafond restant 300 → disponible 300 − 100 = 200', eq(c['over'], 100) and eq(c['pay']['left'], 300) and eq(c['availCard'], 200), c)
+    check('le retrait n’est pas réduit par le dépassement : plafond de retrait restant 200', eq(c['availCash'], 200), c)
+    etat(pg, solde=-2495.18, od=2000, pl=1500, wl=1500)
+    c = info(pg)
+    check('cas de l’utilisateur : −2 495,18 pour 2 000 autorisés, plafond 1 500 : dépassement 495,18, disponible 1 004,82', eq(c['over'], 495.18) and eq(c['availCard'], 1004.82), c)
+    etat(pg, solde=-1500, od=2000, pl=1500, wl=1500)
+    check('dans le découvert (−1 500 pour 2 000) : disponible = 1 500, sans réduction', eq(info(pg)['over'], 0) and eq(info(pg)['availCard'], 1500), info(pg))
+    etat(pg, solde=-3600, od=2000, pl=1500, wl=1500)
+    check('dépassement supérieur au plafond : disponible plancher à 0, jamais négatif', eq(info(pg)['availCard'], 0), info(pg))
     etat(pg, od=0, pl=0, wl=0, solde=300)
     c = info(pg)
     check('sans découvert ni plafond : disponible = solde', eq(c['availCard'], 300) and c['pay'] is None and c['wd'] is None, c)
+    etat(pg, od=500, pl=0, wl=0, solde=200)
+    check('découvert sans plafond saisi : disponible = marge (solde + découvert)', eq(info(pg)['availCard'], 700), info(pg))
     etat(pg, od=0, pl=0, wl=0, solde=-50)
     check('sans découvert, solde négatif : dépassement dès le premier euro', eq(info(pg)['over'], 50) and eq(info(pg)['availCard'], 0))
     check('aucune erreur JavaScript', not pg.errors, pg.errors)
@@ -89,6 +102,18 @@ def test_fenetres(browser):
     check('virements, lignes de récurrences et recettes ne comptent pas', eq(info(pg)['pay']['spent'], 0), info(pg)['pay'])
     etat(pg, solde=2000, differe=True, tx=[ligne('t1', '2026-11-15', -45, acc='a3'), ligne('t2', '2026-11-16', -5)])
     check('les paiements d’une carte à débit différé rattachée comptent dans le plafond', eq(info(pg)['pay']['spent'], 50), info(pg)['pay'])
+    etat(pg, solde=2000, pl=1500, differe=True, diff_anchor=-847.23)
+    c = info(pg)
+    check('carte différée avec solde de référence −847,23 sans détail : compté comme utilisé, restant 652,77', eq(c['undetailed'], 847.23) and eq(c['pay']['spent'], 847.23) and eq(c['pay']['left'], 652.77), c)
+    etat(pg, solde=2000, differe=True, diff_anchor=-847.23, tx=[ligne('t1', '2026-11-12', -100, acc='a3')])
+    c = info(pg)
+    check('achats détaillés + solde de référence : pas de double comptage (847,23 au total)', eq(c['pay']['spent'], 847.23) and eq(c['undetailed'], 747.23), c)
+    etat(pg, solde=2000, differe=True, diff_anchor=0)
+    check('carte différée à zéro : rien d’utilisé', eq(info(pg)['pay']['spent'], 0), info(pg)['pay'])
+    etat(pg, solde=2000, differe=True, diff_anchor=50)
+    check('carte différée avec solde positif : rien d’utilisé', eq(info(pg)['pay']['spent'], 0), info(pg)['pay'])
+    etat(pg, solde=2000, differe=True, diff_anchor=-300)
+    check('les achats non détaillés ne comptent pas dans le plafond de retrait', eq(info(pg)['wd']['spent'], 0), info(pg)['wd'])
     check('aucune erreur JavaScript', not pg.errors, pg.errors)
 
 
@@ -132,11 +157,12 @@ def test_interface(browser):
     etat(pg, solde=200, tx=[ligne('t1', '2020-02-01', -5)])
     pg.click('[data-a=nav][data-v=home]')
     txt = norm(pg.inner_text('#app'))
-    check('Accueil : carte du compte avec état, découvert, plafonds et disponibles', all(x in txt for x in ['Compte test', 'Découvert autorisé', 'Paiement (30 j)', 'Retrait (7 j)', 'sur un plafond de', 'Disponible par carte', 'Disponible en retrait']), txt[:600])
+    check('Accueil : carte du compte avec état, découvert, plafonds et disponibles', all(x in txt for x in ['Compte test', 'Découvert autorisé', 'Paiement (30 j)', 'Retrait (7 j)', 'plafond', 'utilisé', 'Disponible par carte', 'Disponible en retrait']), txt[:600])
     etat(pg, solde=-100, tx=[ligne('t1', '2026-11-10', -500)])
     pg.click('[data-a=nav][data-v=home]')
     txt = norm(pg.inner_text('#app'))
     check('Accueil : « Découvert dépassé » + carte d’alerte quand la limite est franchie', 'Découvert dépassé' in txt and pg.evaluate("() => !!document.querySelector('.card.warn')"), txt[:500])
+    check('Accueil : le dépassement est expliqué comme réduisant le plafond de paiement', 'réduit ton plafond de paiement' in txt, txt[:700])
     etat(pg, od=0, pl=0, wl=0)
     pg.click('[data-a=nav][data-v=home]')
     check('compte sans découvert ni plafond : pas de carte', 'Plafond de paiement' not in pg.inner_text('#app') and 'Découvert autorisé' not in pg.inner_text('#app'))

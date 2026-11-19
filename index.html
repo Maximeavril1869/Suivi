@@ -102,7 +102,7 @@ td,th{padding:4px;border-bottom:1px solid var(--line);text-align:left}
 <div id="offbar" role="status" aria-live="polite" hidden>Hors ligne : tes modifications sont gardées sur cet appareil</div>
 <script>
 const KEY='compte-salaire-v1';
-const APP_VERSION='29';   // identique au numéro de la constante V de sw.js (compte-v29) : à incrémenter ensemble à chaque livraison
+const APP_VERSION='30';   // identique au numéro de la constante V de sw.js (compte-v30) : à incrémenter ensemble à chaque livraison
 const CATS={
  'Revenus':['Salaire','Primes','Remboursements','Intérêts','Autres revenus'],
  'Logement':['Loyer / crédit','Charges','Énergie','Internet / téléphone','Assurance habitation','Travaux / mobilier'],
@@ -256,8 +256,8 @@ function dueItems(m){
  });
  return out.sort((a,b)=>a.d<b.d?-1:a.d>b.d?1:0);
 }
-function debitDates(a){
- const t=today(),ym=t.slice(0,7);
+function debitDates(a,t){
+ t=t||today();const ym=t.slice(0,7);
  const at=m=>{const [y,mm]=m.split('-').map(Number);return m+'-'+pad(Math.min(a.debitDay||1,dim(y,mm)));};
  const d0=at(ym);
  return d0<=t?{last:d0,next:at(addMonths(ym,1))}:{last:at(addMonths(ym,-1)),next:d0};
@@ -514,21 +514,27 @@ function savePay(){
  save();closeModal();render();
 }
 /* ---------- Découvert autorisé et plafonds de carte (compte courant) ----------
-   Disponible par carte = solde + découvert autorisé (jamais négatif), limité par ce qui reste du plafond de paiement sur la période glissante ;
-   disponible en retrait = idem avec le plafond de retrait. Au-delà du découvert autorisé, le disponible tombe à 0 (règle de l'app : la banque peut en plus facturer des frais ou limiter la carte).
+   Règle donnée par l'utilisateur (carte à débit différé, 2000 de découvert, 1500 de plafond) : tant que le découvert n'est pas atteint, le disponible par carte est le plafond de
+   paiement restant ; au-delà, c'est le plafond restant MOINS le dépassement (1500 − 495,18 = 1004,82), jamais négatif. Sans plafond saisi : la marge du compte (solde + découvert).
+   Retrait : plafond de retrait restant, non réduit par le dépassement (c'est ce qu'affiche l'appli de sa banque ; à confirmer en pratique).
+   Plafond utilisé = lignes de paiement de la fenêtre glissante + achats d'une carte à débit différé rattachée qui ne sont pas détaillés en lignes
+   (solde en attente de la carte − lignes détaillées depuis le dernier prélèvement).
    Le découvert n'entre JAMAIS dans le budget du jour ni dans le reste à vivre : c'est une limite à ne pas atteindre. */
 const RETRAIT="Retrait d'espèces";
 function cardInfo(a,now){
  const r2=n=>Math.round(n*100)/100,od=a.od||0,bal=accBalance(a.id,now),margin=r2(bal+od);
- const ids=new Set([a.id].concat(S.accounts.filter(x=>x.type==='differe'&&x.debitAcc===a.id).map(x=>x.id)));
+ const diff=S.accounts.filter(x=>x.type==='differe'&&x.debitAcc===a.id);
+ const ids=new Set([a.id].concat(diff.map(x=>x.id)));
  const lines=S.tx.filter(t=>ids.has(t.acc)&&t.amount<0&&!t.xfer&&!t.recKey);
- const spent=(days,wd)=>r2(-lines.filter(t=>t.date>addDays(now,-days)&&t.date<=now&&((t.sub===RETRAIT)===wd)).reduce((s,t)=>s+t.amount,0));
+ /* achats en attente sur une carte à débit différé non détaillés en lignes (ex. solde de référence saisi sans le détail) */
+ const undetailed=diff.reduce((s,d)=>{const since=debitDates(d,now).last,pending=Math.max(0,-accBalance(d.id,now)),detailed=-lines.filter(t=>t.acc===d.id&&t.date>since&&t.date<=now).reduce((q,t)=>q+t.amount,0);return s+Math.max(0,r2(pending-detailed));},0);
+ const spent=(days,wd)=>r2(-lines.filter(t=>t.date>addDays(now,-days)&&t.date<=now&&((t.sub===RETRAIT)===wd)).reduce((s,t)=>s+t.amount,0)+(wd?0:undetailed));
  const mk=(lim,days,wd)=>lim?{lim,days,spent:spent(days,wd),left:Math.max(0,r2(lim-spent(days,wd)))}:null;
  const pay=mk(a.payLim,a.payDays||30,false),wd=mk(a.wdLim,a.wdDays||7,true);
- const availBank=Math.max(0,margin);
+ const availBank=Math.max(0,margin),over=margin<0?-margin:0;
  const cyc=payCycle(now);let run=bal,min=bal,minDate=now;
  dueRange(cyc.from,cyc.to).filter(x=>x.r.acc===a.id).sort((x,y)=>x.d<y.d?-1:x.d>y.d?1:0).forEach(x=>{run=r2(run+x.amount);if(run<min){min=run;minDate=x.d<now?now:x.d;}});
- return{od,bal,margin,over:margin<0?-margin:0,pay,wd,availBank,availCard:pay?Math.min(availBank,pay.left):availBank,availCash:wd?Math.min(availBank,wd.left):availBank,
+ return{od,bal,margin,over,pay,wd,undetailed,availBank,availCard:pay?Math.max(0,r2(pay.left-over)):availBank,availCash:wd?wd.left:availBank,
   end:run,min,minDate,projOver:min+od<-0.005,to:cyc.to};
 }
 function cardsHTML(now){
@@ -536,15 +542,15 @@ function cardsHTML(now){
   const c=cardInfo(a,now),sr=(l,v,cls)=>`<div class="sr"><span>${l}</span><span class="${cls||''}">${v}</span></div>`;
   const state=c.over>0?'Découvert dépassé':c.bal<0?'À découvert':c.projOver?'Dépassement prévu':'Dans les limites';
   const bad=c.over>0||c.projOver;
-  let h=`<div class="card ${bad?'warn':''}"><b>${esc(accName(a.id))}</b> <span class="s">· ${state}</span><div style="margin-top:6px">`;
+  let h=`<div class="card ${bad?'warn':''}"><b>${esc(accName(a.id))}</b><div class="s">${state}</div><div style="margin-top:6px">`;
   h+=sr('Solde',fmt(c.bal),c.bal<0?'neg':'');
   if(c.od){h+=sr('Découvert autorisé',fmt(c.od));h+=c.over>0?sr('Dépassement',fmt(c.over),'neg'):sr('Marge avant la limite',fmt(Math.max(0,c.margin)));}
-  if(c.pay)h+=sr('Paiement ('+c.pay.days+' j)',fmt(c.pay.left)+' restants')+`<div class="s" style="text-align:right">sur un plafond de ${fmt(c.pay.lim)}</div>`;
-  if(c.wd)h+=sr('Retrait ('+c.wd.days+' j)',fmt(c.wd.left)+' restants')+`<div class="s" style="text-align:right">sur un plafond de ${fmt(c.wd.lim)}</div>`;
+  if(c.pay)h+=sr('Paiement ('+c.pay.days+' j)',fmt(c.pay.left)+' restants')+`<div class="s" style="text-align:right">plafond ${fmt(c.pay.lim)} · utilisé ${fmt(c.pay.spent)}</div>`;
+  if(c.wd)h+=sr('Retrait ('+c.wd.days+' j)',fmt(c.wd.left)+' restants')+`<div class="s" style="text-align:right">plafond ${fmt(c.wd.lim)} · utilisé ${fmt(c.wd.spent)}</div>`;
   h+=`<div class="sr" style="margin-top:4px"><b>Disponible par carte</b><b class="${c.availCard<=0?'neg':'pos'}">${fmt(c.availCard)}</b></div>`;
   if(c.wd)h+=`<div class="sr"><b>Disponible en retrait</b><b class="${c.availCash<=0?'neg':'pos'}">${fmt(c.availCash)}</b></div>`;
   if(c.min<0||c.projOver)h+=`<div class="s" style="margin-top:6px">Solde le plus bas prévu avant le ${c.to.slice(8)}/${c.to.slice(5,7)} : <b class="${c.projOver?'neg':''}">${fmt(c.min)}</b> le ${c.minDate.slice(8)}/${c.minDate.slice(5,7)}${c.projOver?' — au-delà de ton autorisation':''}</div>`;
-  if(c.over>0)h+=`<div class="s" style="margin-top:6px">Au-delà du découvert autorisé, les paiements par carte risquent d'être refusés et des frais peuvent s'ajouter.</div>`;
+  if(c.over>0)h+=`<div class="s" style="margin-top:6px">Le dépassement du découvert (${fmt(c.over)}) réduit ton plafond de paiement : ${c.pay?fmt(c.pay.left)+' − '+fmt(c.over):'marge nulle'}. Des frais peuvent aussi s'ajouter.</div>`;
   return h+'</div></div>';
  }).join('');
 }
