@@ -5,7 +5,7 @@ Les entrées les plus récentes sont en haut. À chaque intervention, ajouter un
 
 ## État actuel (2026-11-19)
 
-- **Version 37** : Bulletin de paye, **un changement de montant vaut pour les mois suivants** (comme les récurrences) ; 252 vérifications d'affichage et 106 sur le module. **Version 36** : module **Bulletin de paye** (suivi de l'évolution de chaque ligne du bulletin, à part des comptes ; nouvelle suite `tests/test_paie.py`, 11 suites, toutes vertes). **À valider sur iPhone et iPad** : la vue (page ouverte depuis Récurrent), les sélecteurs de mois (deux listes), le tableau à trois mois. Version 35 (audit des débordements d'écran : grilles de l'Accueil, bannière Hors ligne ; nouvelle suite `tests/test_debordements.py`, 10 suites, toutes vertes) ; version 34 (champs date iPhone) ; version 33 : patrimoine net (carte repliée sur l'Accueil), types « Épargne bloquée » et « Bien ». 9 suites de tests, toutes vertes (`tests/test_patrimoine.py` : 37 vérifications). Points ouverts : voir l'entrée du 2026-11-19.
+- **Version 38** : Bulletin de paye, sélection de fiches pour les supprimer (bouton « Sélectionner » dans Fiches validées) ; 122 vérifications sur le module, 258 d'affichage. **Version 37** : Bulletin de paye, **un changement de montant vaut pour les mois suivants** (comme les récurrences) ; 252 vérifications d'affichage et 106 sur le module. **Version 36** : module **Bulletin de paye** (suivi de l'évolution de chaque ligne du bulletin, à part des comptes ; nouvelle suite `tests/test_paie.py`, 11 suites, toutes vertes). **À valider sur iPhone et iPad** : la vue (page ouverte depuis Récurrent), les sélecteurs de mois (deux listes), le tableau à trois mois. Version 35 (audit des débordements d'écran : grilles de l'Accueil, bannière Hors ligne ; nouvelle suite `tests/test_debordements.py`, 10 suites, toutes vertes) ; version 34 (champs date iPhone) ; version 33 : patrimoine net (carte repliée sur l'Accueil), types « Épargne bloquée » et « Bien ». 9 suites de tests, toutes vertes (`tests/test_patrimoine.py` : 37 vérifications). Points ouverts : voir l'entrée du 2026-11-19.
 
 ### Rappel de l'état au 2026-11-16
 
@@ -21,6 +21,13 @@ Les entrées les plus récentes sont en haut. À chaque intervention, ajouter un
 - Service worker en version `compte-v17`.
 - Reste à faire : tester l'import CSV avec l'export réel de la banque (point en attente depuis la première version).
 - Aucune donnée réelle n'est stockée dans le dépôt.
+
+## 2026-11-19 — Bulletin de paye : sélection et suppression de fiches (version 38)
+
+- Demande : pouvoir sélectionner des fiches de paye pour les supprimer (erreur de saisie).
+- Réalisé : dans « Fiches validées », bouton « Sélectionner » → cases ☐/☑ sur chaque fiche (toucher une fiche la coche, elle ne s'ouvre pas), « Tout sélectionner / désélectionner », « Annuler », « Supprimer (N) » (désactivé à 0, confirmation avec le nombre). État `paSelM` (ensemble de mois, hors des données, abandonné en quittant la page). Les mois supprimés reviennent dans « À valider » tant que le modèle les couvre (pour les ressaisir) ; le modèle n'est pas touché.
+- Tests : `test_selection_suppression` (16 vérifications) dans `tests/test_paie.py` ; vue en sélection ajoutée à `tests/test_debordements.py`.
+- Point ouvert : l'utilisateur a signalé qu'après avoir « écrit une nouvelle ligne » il n'y avait « aucune récurrence » ; en attente de sa réponse pour savoir s'il s'agit d'une ligne ajoutée dans une fiche (ponctuelle, qui ne se répète pas) ou d'une ligne ajoutée au modèle (aucun mois à valider quand les fiches existent déjà).
 
 ## 2026-11-19 — Bulletin de paye : un changement vaut pour les mois suivants (version 37)
 

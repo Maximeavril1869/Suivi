@@ -320,6 +320,56 @@ def test_propagation(browser):
     check('aucune erreur JavaScript', not pg.errors, pg.errors)
 
 
+def test_selection_suppression(browser):
+    print('Sélectionner des fiches pour les supprimer')
+    pg = device(browser, FauxSupabase())
+    msgs = []
+    refus = [False]
+    pg.on('dialog', lambda d: (msgs.append(d.message), d.dismiss() if refus[0] else d.accept()))
+    depart(pg)
+    ouvre_paie(pg)
+    mm = {k: mois(pg, k) for k in range(-4, 2)}
+    ajoute_ligne(pg, 'Brut', 'gain', '1000', mm[-4])
+    pg.click('[data-a=paiall]')
+    check('5 fiches validées pour le test', len(etat_paie(pg)['slips']) == 5)
+    pg.evaluate("() => { FOLD['paie-fiches'] = true; render(); }")
+    check('bouton « Sélectionner » dans les fiches validées', pg.locator('[data-a=paisel]').count() == 1)
+    pg.click('[data-a=paisel]')
+    check('mode sélection : cases vides, « Supprimer (0) » désactivé', pg.inner_text('[data-a=paidel]').strip() == 'Supprimer (0)' and pg.evaluate("() => document.querySelector('[data-a=paidel]').disabled") is True)
+    pg.click('[data-a=paitog][data-m="%s"]' % mm[-3])
+    pg.click('[data-a=paitog][data-m="%s"]' % mm[-1])
+    check('deux fiches cochées : compteur à 2 et cases ☑', pg.inner_text('[data-a=paidel]').strip() == 'Supprimer (2)' and pg.inner_text('[data-a=paitog][data-m="%s"]' % mm[-3]).count('☑') == 1)
+    pg.click('[data-a=paitog][data-m="%s"]' % mm[-1])
+    check('toucher une fiche cochée la décoche', pg.inner_text('[data-a=paidel]').strip() == 'Supprimer (1)')
+    pg.click('[data-a=paiselall]')
+    check('« Tout sélectionner » : les 5 fiches', pg.inner_text('[data-a=paidel]').strip() == 'Supprimer (5)')
+    pg.click('[data-a=paiselall]')
+    check('« Tout désélectionner » : plus aucune', pg.inner_text('[data-a=paidel]').strip() == 'Supprimer (0)')
+    check('en mode sélection, toucher une fiche ne l\'ouvre pas', not pg.evaluate("() => document.getElementById('modal').classList.contains('open')"))
+    pg.click('[data-a=paitog][data-m="%s"]' % mm[-3])
+    pg.click('[data-a=paitog][data-m="%s"]' % mm[0])
+    refus[0] = True
+    pg.click('[data-a=paidel]')
+    check('confirmation demandée (2 fiches) ; refusée : rien n\'est supprimé', msgs and msgs[-1].startswith('Supprimer 2 fiches') and len(etat_paie(pg)['slips']) == 5, msgs)
+    refus[0] = False
+    pg.click('[data-a=paidel]')
+    e = etat_paie(pg)
+    check('confirmée : les 2 fiches cochées sont supprimées, les autres gardées', sorted(e['slips']) == [mm[-4], mm[-2], mm[-1]], sorted(e['slips']))
+    check('sortie du mode sélection après suppression', pg.locator('[data-a=paisel]').count() == 1 and pg.locator('[data-a=paidel]').count() == 0)
+    check('les mois supprimés reviennent dans « À valider »', pg.evaluate("() => paDue()") == [mm[-3], mm[0]], pg.evaluate("() => paDue()"))
+    check('le modèle est intact', len(e['lines']) == 1 and e['lines'][0]['amount'] == 1000)
+    # annuler la sélection, puis quitter la page en cours de sélection
+    pg.click('[data-a=paisel]')
+    pg.click('[data-a=paitog][data-m="%s"]' % mm[-2])
+    pg.click('[data-a=paiselend]')
+    check('« Annuler » : rien n\'est supprimé, fiches ouvrables de nouveau', pg.locator('[data-a=paisel]').count() == 1 and mm[-2] in etat_paie(pg)['slips'])
+    pg.click('[data-a=paisel]')
+    pg.click('[data-a=paieback]')
+    ouvre_paie(pg)
+    check('quitter la page en pleine sélection : la sélection est abandonnée', pg.evaluate("() => paSelM") is None)
+    check('aucune erreur JavaScript', not pg.errors, pg.errors)
+
+
 def test_validation_ligne(browser):
     print('Formulaire d\'une ligne : contrôles')
     pg = device(browser, FauxSupabase())
@@ -375,6 +425,7 @@ def main():
         test_donnees(browser)
         test_parcours(browser)
         test_propagation(browser)
+        test_selection_suppression(browser)
         test_validation_ligne(browser)
         test_sync(browser)
         browser.close()
