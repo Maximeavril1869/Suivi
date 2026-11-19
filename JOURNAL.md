@@ -5,7 +5,7 @@ Les entrées les plus récentes sont en haut. À chaque intervention, ajouter un
 
 ## État actuel (2026-11-19)
 
-- **Version 33** : patrimoine net (carte repliée sur l'Accueil), types « Épargne bloquée » et « Bien ». 9 suites de tests, toutes vertes (`tests/test_patrimoine.py` : 37 vérifications). Points ouverts : voir l'entrée du 2026-11-19.
+- **Version 34** (champs date iPhone) ; version 33 : patrimoine net (carte repliée sur l'Accueil), types « Épargne bloquée » et « Bien ». 9 suites de tests, toutes vertes (`tests/test_patrimoine.py` : 37 vérifications). Points ouverts : voir l'entrée du 2026-11-19.
 
 ### Rappel de l'état au 2026-11-16
 
@@ -21,6 +21,12 @@ Les entrées les plus récentes sont en haut. À chaque intervention, ajouter un
 - Service worker en version `compte-v17`.
 - Reste à faire : tester l'import CSV avec l'export réel de la banque (point en attente depuis la première version).
 - Aucune donnée réelle n'est stockée dans le dépôt.
+
+## 2026-11-19 — Champs date : débordement sur iPhone 16e (version 34)
+
+- Constat (capture de l'utilisateur) : dans la fenêtre « Paie de … », le champ date dépassait à droite de l'écran sur iPhone 16e. Cause probable : largeur propre des champs date de Safari iOS.
+- Correction : `input[type=date]` en `appearance:none`, `min-width:0`, `max-width:100%`, centré ; fenêtres sans défilement horizontal. Vérifié à 390 px de large dans Chromium (champ à l'intérieur de la fenêtre) ; **non vérifiable ici sur Safari iOS réel : à confirmer sur l'iPhone**.
+- Aussi : la règle de paie (octobre 2026 = 28, octobre 2027 = 27) était correcte, c'était octobre 2027 sur la capture.
 
 ## 2026-11-19 — Patrimoine net, Épargne bloquée et Bien (version 33)
 

@@ -75,6 +75,10 @@ body.off #app{padding-bottom:calc(120px + env(safe-area-inset-bottom))}
 body.off .fab{bottom:calc(104px + env(safe-area-inset-bottom))}
 #modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:10;align-items:flex-end;justify-content:center}
 #modal.open{display:flex}
+/* iPhone : les champs date de Safari ont une largeur propre qui débordait de la fenêtre (iPhone 16e) */
+.sheet{overflow-x:hidden}
+.sheet label{display:block;min-width:0;max-width:100%}
+input[type=date]{-webkit-appearance:none;appearance:none;display:block;min-width:0;max-width:100%;min-height:46px;text-align:center}
 .sheet{background:var(--card);width:100%;max-width:640px;max-height:92vh;overflow:auto;border-radius:18px 18px 0 0;padding:16px 16px calc(20px + env(safe-area-inset-bottom))}
 .btns{display:flex;gap:8px;flex-wrap:wrap}
 .btns>*{flex:1}
@@ -100,7 +104,7 @@ const KEY='compte-salaire-v1';
 /* Épargne bloquée et Bien : comptent dans le patrimoine net seulement. Jamais dans le reste à vivre, le budget du jour, les soldes des comptes cochés ni « Sortir du découvert », et on n'y saisit pas de lignes : on met à jour leur valeur (solde de référence). */
 const ILLIQ={bloque:1,bien:1};
 const isLiquid=a=>!ILLIQ[a.type];
-const APP_VERSION='33';   // identique au numéro de la constante V de sw.js (compte-v33) : à incrémenter ensemble à chaque livraison
+const APP_VERSION='34';   // identique au numéro de la constante V de sw.js (compte-v34) : à incrémenter ensemble à chaque livraison
 const CATS={
  'Revenus':['Salaire','Primes','Remboursements','Intérêts','Autres revenus'],
  'Logement':['Loyer / crédit','Charges','Énergie','Internet / téléphone','Assurance habitation','Travaux / mobilier'],
