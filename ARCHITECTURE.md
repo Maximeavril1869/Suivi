@@ -68,7 +68,7 @@ Navigation en bas, 5 vues (objet `VIEWS`) :
 
 | Vue | Fonction | Contenu |
 |---|---|---|
-| Accueil | `homeHTML` | Carte « Budget du jour », cartes de découvert et plafonds (`cardsHTML`), solde, graphique, répartition, bloc « Sortir du découvert », échéances à valider (le rappel de sauvegarde est en tête de toutes les vues) |
+| Accueil | `homeHTML` | Choix des comptes (carte repliable `accFoldHTML`), carte « Budget du jour », cartes de découvert et plafonds (`cardsHTML`), solde, graphique, répartition, bloc « Sortir du découvert », échéances à valider (le rappel de sauvegarde est en tête de toutes les vues) |
 | Lignes | `linesHTML` | Liste filtrable, sélection multiple et modification groupée |
 | Récurrent | `recHTML` | Échéances à valider, récurrences, paiements en plusieurs fois |
 | Import | `impHTML` | Import CSV avec choix des colonnes |
@@ -113,6 +113,10 @@ Pour chaque compte courant ayant au moins un de ces réglages (fiche du compte),
 - **Prévision** : solde du jour + échéances à venir de la période (`dueRange`, y compris le prélèvement d'une carte à débit différé sur ce compte) ; la carte indique le solde le plus bas prévu, sa date, et « Dépassement prévu » s'il passe sous −découvert.
 - **Le découvert n'entre jamais** dans le budget du jour, le reste à vivre ni les totaux (choix de l'utilisateur : c'est une limite à ne pas atteindre).
 
+## Choix des comptes sur l'Accueil
+
+L'Accueil n'affiche plus la rangée de puces : `accFoldHTML` produit une carte repliable (clé `hacc`, repliée par défaut) dont le titre donne « Comptes : N sur M · solde » (même total que « Solde des comptes cochés » : `balanceAt(date, false)`). Dépliée : les comptes par organisme (groupes repliables, clés `h:<nom>`, ouverts par défaut), chacun avec sa case ☑/☐ et son solde, plus « Tout cocher » / « Tout décocher » (action `allacc`). Sans organisme : liste plate. Un seul compte : pas de carte. Le choix (`S.shown`, propre à l'appareil) reste le même pour toutes les pages ; **Lignes et Récurrent gardent la rangée de puces** (`accBar`). L'état ouvert / replié suit le mécanisme `FOLD` des menus de Réglages.
+
 ## Menus repliables de Réglages
 
 - Chaque carte de Réglages est un `<details class="card fold">` produit par `foldCard(clé, titre, contenu, ouvertParDéfaut)`. Dans la carte Comptes, chaque organisme (champ « Organisme / groupe » d'un compte) est un `<details class="fold grp">` de clé `g:<nom>` ; le titre du groupe garde son solde. Sans organisme, ou avec un seul groupe sans nom, la liste des comptes reste plate comme avant.
@@ -123,7 +127,7 @@ Pour chaque compte courant ayant au moins un de ces réglages (fiche du compte),
 ## Mise à jour et déploiement
 
 - Hébergement : GitHub Pages à partir du dépôt (branche par défaut `main`).
-- Le service worker (`sw.js`) a une version de cache (constante `V`, actuellement `compte-v30`). **À chaque modification publiée, incrémenter cette version** pour que l'iPhone récupère la nouvelle app, **et la constante `APP_VERSION` de `index.html`** (même numéro : `22` pour `compte-v22`), affichée en bas de Réglages (« Mon Compte · version 22 ») pour vérifier quelle version tourne sur l'appareil.
+- Le service worker (`sw.js`) a une version de cache (constante `V`, actuellement `compte-v31`). **À chaque modification publiée, incrémenter cette version** pour que l'iPhone récupère la nouvelle app, **et la constante `APP_VERSION` de `index.html`** (même numéro : `22` pour `compte-v22`), affichée en bas de Réglages (« Mon Compte · version 22 ») pour vérifier quelle version tourne sur l'appareil.
 - Aucune étape de build : modifier `index.html`, commiter, pousser.
 
 ## Synchronisation chiffrée

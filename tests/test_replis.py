@@ -151,10 +151,10 @@ def test_marge_haute(browser):
     print('Haut de page : les puces de comptes ne sont pas collées au bord')
     pg = device(browser, FauxSupabase())
     comptes_demo(pg)
-    for v in ['home', 'tx', 'rec']:
+    for v, sel in [('home', 'details[data-fold=hacc]'), ('tx', '.chips'), ('rec', '.chips')]:
         pg.click('[data-a=nav][data-v=%s]' % v)
-        y = pg.evaluate("() => document.querySelector('.chips').getBoundingClientRect().top")
-        check('vue %s : puces à au moins 30 px du haut de l’écran' % v, y >= 30, y)
+        y = pg.evaluate("(s) => document.querySelector(s).getBoundingClientRect().top", sel)
+        check('vue %s : choix des comptes à au moins 30 px du haut de l’écran' % v, y >= 30, y)
 
 
 def main():

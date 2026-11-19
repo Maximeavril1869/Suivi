@@ -5,7 +5,7 @@ Les entrées les plus récentes sont en haut. À chaque intervention, ajouter un
 
 ## État actuel (2026-11-16)
 
-- App PWA locale d'abord (un seul fichier `index.html`), publiée sur GitHub Pages, utilisée sur iPhone et iPad. **Synchronisation chiffrée** (validée sur appareils le 2026-11-12), **rappel de sauvegarde partagé** (même logique que Plan du jour) et **bannière « Hors ligne »** ajoutés le 2026-11-12 (à valider sur iPhone et iPad). Service worker en version `compte-v30` (numéro affiché en bas de Réglages). **Réglages : menus repliables** depuis le 2026-11-17 (à valider sur iPhone et iPad).
+- App PWA locale d'abord (un seul fichier `index.html`), publiée sur GitHub Pages, utilisée sur iPhone et iPad. **Synchronisation chiffrée** (validée sur appareils le 2026-11-12), **rappel de sauvegarde partagé** (même logique que Plan du jour) et **bannière « Hors ligne »** ajoutés le 2026-11-12 (à valider sur iPhone et iPad). Service worker en version `compte-v31` (numéro affiché en bas de Réglages). **Réglages : menus repliables** depuis le 2026-11-17 (à valider sur iPhone et iPad).
 - Plan en 3 étapes entièrement présent dans le code : comptes multiples + virements, paiements en plusieurs fois, emprunts / livrets / cartes.
 - Reste à faire : tester l'import CSV avec l'export réel de la banque (point en attente depuis la première version) ; valider la synchronisation sur appareil.
 - Aucune donnée réelle n'est stockée dans le dépôt.
@@ -26,6 +26,15 @@ Les entrées les plus récentes sont en haut. À chaque intervention, ajouter un
 - Fait : `foldCard` et l'objet `FOLD` (`localStorage`, clé `compte-replis`) dans `index.html` ; `<details>` natifs. Service worker `compte-v23`, `APP_VERSION = '23'`.
 - Tests : `tests/test_replis.py` (34 vérifications) ; `go_settings` de `tests/test_sync.py` déplie désormais toutes les cartes pour que les anciens tests atteignent leurs champs ; les trois anciennes suites passent toujours (57, 50, 30).
 - Reste à valider sur iPhone et iPad.
+
+## 2026-11-19 (suite 2) — Choix des comptes de l'Accueil en liste repliable (version 31)
+
+- Réponses sur la version 30 : les 847,23 € de la CB **comptent** dans le plafond ; retraits : **on laisse** (non réduits par le dépassement). Les deux points ouverts de la version 30 sont donc clos.
+- Demande : sur la première page, un affichage différent des cases à cocher des comptes, par exemple une liste rétractable.
+- Décisions : **Accueil seulement** (Lignes et Récurrent gardent la rangée de puces) ; ligne repliée = **nombre de comptes + solde total** ; liste dépliée = **groupée par organisme, groupes repliables** ; **repliée au démarrage**.
+- Choix non demandé : groupes d'organismes **ouverts** par défaut à l'intérieur de la carte (pour voir les comptes dès qu'on la déplie), modifiable.
+- Fait : `accFoldHTML` (carte `hacc`), cases ☑/☐ avec solde, « Tout cocher » / « Tout décocher » (`allacc`), même `S.shown` pour toutes les pages. Service worker `compte-v31`, `APP_VERSION = '31'`.
+- Tests : `tests/test_comptes_accueil.py` (23 vérifications) ; `test_replis.py` adapté (marge haute) ; les sept autres suites passent.
 
 ## 2026-11-19 (suite) — Règle de la carte corrigée, achats non détaillés comptés (version 30)
 

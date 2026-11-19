@@ -102,7 +102,7 @@ td,th{padding:4px;border-bottom:1px solid var(--line);text-align:left}
 <div id="offbar" role="status" aria-live="polite" hidden>Hors ligne : tes modifications sont gardées sur cet appareil</div>
 <script>
 const KEY='compte-salaire-v1';
-const APP_VERSION='30';   // identique au numéro de la constante V de sw.js (compte-v30) : à incrémenter ensemble à chaque livraison
+const APP_VERSION='31';   // identique au numéro de la constante V de sw.js (compte-v31) : à incrémenter ensemble à chaque livraison
 const CATS={
  'Revenus':['Salaire','Primes','Remboursements','Intérêts','Autres revenus'],
  'Logement':['Loyer / crédit','Charges','Énergie','Internet / téléphone','Assurance habitation','Travaux / mobilier'],
@@ -406,6 +406,16 @@ const monthNav=()=>{
 };
 const catOptions=sel=>Object.keys(CATS).map(c=>`<option ${c===sel?'selected':''}>${esc(c)}</option>`).join('');
 const subOptions=(cat,sel)=>(CATS[cat]||[]).map(s=>`<option ${s===sel?'selected':''}>${esc(s)}</option>`).join('');
+/* Accueil : choix des comptes dans une carte repliable (Lignes et Récurrent gardent la rangée de puces `accBar`). L'état ouvert / replié est propre à l'appareil (FOLD). */
+function accFoldHTML(){
+ if(S.accounts.length<2)return '';
+ const now=today(),nOn=S.accounts.filter(a=>S.shown.includes(a.id)).length;
+ const grp=[];S.accounts.forEach(a=>{const g=a.group||'';let e=grp.find(x=>x.g===g);if(!e){e={g,l:[]};grp.push(e);}e.l.push(a);});
+ const multi=grp.length>1||(grp[0]&&grp[0].g);
+ const row=a=>{const on=S.shown.includes(a.id),b=accBalance(a.id,now);return `<div class="row" data-a="togacc" data-id="${esc(a.id)}"><div class="m"><div class="l">${on?'☑':'☐'} ${esc(multi?a.name:accName(a.id))}</div></div><div class="a ${b<0?'neg':''}">${fmt(b)}</div></div>`;};
+ const list=grp.map(e=>multi?`<details class="fold grp" data-fold="${esc('h:'+e.g)}"${foldOpen('h:'+e.g,true)?' open':''}><summary><b>${esc(e.g||'Sans organisme')}</b><span class="s">${fmt(e.l.reduce((t,a)=>t+accBalance(a.id,now),0))}</span></summary>${e.l.map(row).join('')}</details>`:e.l.map(row).join('')).join('');
+ return foldCard('hacc',`Comptes : ${nOn} sur ${S.accounts.length} · solde ${fmt(balanceAt(now,false))}`,`<div style="margin-top:6px">${list}</div><div class="btns" style="margin-top:10px"><button class="ghost" data-a="allacc" data-v="1">Tout cocher</button><button class="ghost" data-a="allacc" data-v="0">Tout décocher</button></div>`,false);
+}
 function accBar(){
  if(S.accounts.length<2)return '';
  return `<div class="chips">`+S.accounts.map(a=>{const on=S.shown.includes(a.id);const b=accBalance(a.id,today());return `<button class="chip ${on?'on':''}" data-a="togacc" data-id="${esc(a.id)}"><b>${on?'☑':'☐'} ${esc(accName(a.id))}</b><span class="${b<0?'neg':''}">${fmt(b)}</span></button>`;}).join('')+`</div>`;
@@ -563,7 +573,7 @@ function homeHTML(){
  if(!S.tx.length){
   h+=`<div class="card"><b>Pour démarrer</b><ol class="mut" style="margin:6px 0 0;padding-left:20px"><li>Réglages : crée tes comptes et indique leur solde actuel.</li><li>Import : charge le CSV de ta banque.</li><li>Récurrent : ajoute loyer, salaire, abonnements.</li></ol></div>`;
  }
- h+=accBar()+budgetCardHTML(now)+cardsHTML(now)+monthNav();
+ h+=accFoldHTML()+budgetCardHTML(now)+cardsHTML(now)+monthNav();
  let proj,projLabel;
  const lastD=R.to.length===10&&per!=='month'?R.to:R.to.slice(0,7)+'-31';
  if(now>=R.from&&now<=R.to){proj=balNow+due.filter(x=>!x.noproj).reduce((a,x)=>a+x.amount,0);projLabel='Solde prévu fin '+{day:'de journée',week:'de semaine',month:'de mois',year:'d\'année'}[per];}
@@ -1153,6 +1163,7 @@ function act(a,ds){
  else if(a==='doimport')doImport();
  else if(a==='newrule')openRule(null);
  else if(a==='editrule')openRule(ds.kw);
+ else if(a==='allacc'){S.shown=ds.v==='1'?S.accounts.map(x=>x.id):[];save(true);pruneSel();render();}
  else if(a==='editpay')openPay(ds.m);
  else if(a==='savepay')savePay();
  else if(a==='resetpay'){if(S.payDates)delete S.payDates[txCtx.pm];save();closeModal();render();}
