@@ -15,6 +15,7 @@ Application de suivi de budget **locale d'abord** : une PWA sans framework et sa
 | `tests/test_rappel_et_hors_ligne.py` | Tests du rappel de sauvegarde partagé et de la bannière « Hors ligne » |
 | `tests/test_regles_et_tiers.py` | Tests de la catégorie Animaux, des tiers en majuscules, du libellé facultatif et des règles dans Réglages |
 | `tests/test_replis.py` | Tests des menus repliables de Réglages (cartes et groupes d'organismes) |
+| `tests/test_debordements.py` | Tests de non-débordement horizontal (390 à 320 px) de toutes les vues et fenêtres |
 | `JOURNAL.md` | Carnet de bord du projet |
 | `ARCHITECTURE.md` | Ce document |
 
@@ -123,6 +124,14 @@ Les trois vues commencent par la même carte `accFoldHTML` (plus de rangée de p
 - Ils n'entrent jamais dans les totaux de liquidité : `scopeAccs` les ignore, `inScope` aussi (pas de lignes), `S.shown` ne les contient jamais (nettoyé dans `migrate` et `saveAcc`), les listes de choix de compte les masquent, `cash` est forcé à faux.
 - Leur valeur est le solde de référence (`anchor`) : date et montant modifiables dans le formulaire (libellés « Valeur… »).
 - `patrimoine(now)` additionne tous les comptes, cochés ou non : liquidités (courants), épargne (livrets), épargne bloquée, biens, moins emprunts (soldes négatifs), cartes de crédit (plafond − disponible) et achats en attente des cartes différées. `patrimoineHTML` = carte repliable `patri` sur l'Accueil (état de repli propre à l'appareil, `FOLD`).
+
+## Largeur d'écran (iPhone 16e = 390 px, jusqu'à 320 px)
+
+Règles à tenir pour qu'aucune vue ni fenêtre ne dépasse l'écran (vérifié par `tests/test_debordements.py`) :
+- Les grilles utilisent `minmax(0,1fr)` (jamais `1fr` seul : une colonne ne rétrécit pas sous la largeur de son contenu) ; les gros chiffres (`.big`, `.bud .bv`) ont une taille `clamp()` et `overflow-wrap:anywhere`.
+- Les fenêtres (`.sheet`) ont `overflow-x:hidden` et leurs `label` `min-width:0` ; les champs date sont en `appearance:none` (Safari iOS).
+- Les libellés de liste (`.row .l`) sont volontairement coupés par « … » (`text-overflow:ellipsis`) ; la bannière « Hors ligne » passe à la ligne au lieu d'être tronquée.
+- Un débordement de la page élargit toute la page (et les fenêtres avec elle) : le moindre élément trop large casse donc tous les écrans.
 
 ## Menus repliables de Réglages
 

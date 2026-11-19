@@ -5,7 +5,7 @@ Les entrées les plus récentes sont en haut. À chaque intervention, ajouter un
 
 ## État actuel (2026-11-19)
 
-- **Version 34** (champs date iPhone) ; version 33 : patrimoine net (carte repliée sur l'Accueil), types « Épargne bloquée » et « Bien ». 9 suites de tests, toutes vertes (`tests/test_patrimoine.py` : 37 vérifications). Points ouverts : voir l'entrée du 2026-11-19.
+- **Version 35** (audit des débordements d'écran : grilles de l'Accueil, bannière Hors ligne ; nouvelle suite `tests/test_debordements.py`, 10 suites, toutes vertes) ; version 34 (champs date iPhone) ; version 33 : patrimoine net (carte repliée sur l'Accueil), types « Épargne bloquée » et « Bien ». 9 suites de tests, toutes vertes (`tests/test_patrimoine.py` : 37 vérifications). Points ouverts : voir l'entrée du 2026-11-19.
 
 ### Rappel de l'état au 2026-11-16
 
@@ -21,6 +21,15 @@ Les entrées les plus récentes sont en haut. À chaque intervention, ajouter un
 - Service worker en version `compte-v17`.
 - Reste à faire : tester l'import CSV avec l'export réel de la banque (point en attente depuis la première version).
 - Aucune donnée réelle n'est stockée dans le dépôt.
+
+## 2026-11-19 — Audit des débordements d'écran (version 35)
+
+- Demande : vérifier qu'il n'y a pas d'autres endroits qui dépassent de la taille de l'écran (suite du champ date de « Paie de… »).
+- Méthode : nouvelle suite `tests/test_debordements.py`. Pour 390, 375, 360 et 320 px, charge des données volontairement longues (noms de compte, libellés, organisme, montants à 5 puis 6 chiffres) et passe en revue 5 vues, Lignes en sélection, Import avec fichier, rappel de sauvegarde + bannière Hors ligne, 13 fenêtres et les 7 types de compte. Repère : défilement horizontal de la page, élément hors écran, élément hors de sa carte, contenu coupé (hors « … » voulu et hors champs de saisie).
+- Trouvé et corrigé : (1) Accueil : les cartes « Reste à vivre » / « Recettes » et la 3ᵉ colonne du Budget du jour sortaient de l'écran dès 375 px avec des montants à 5 chiffres négatifs (grilles `1fr` qui ne rétrécissaient pas) ; à 360 px la page entière s'élargissait et le bouton « Réglages » sortait de l'écran, et toutes les fenêtres s'élargissaient avec la page → grilles en `minmax(0,1fr)`, chiffres en `clamp()` + retour à la ligne. (2) Bannière « Hors ligne » tronquée par « … » à 375 px et moins → elle passe à la ligne.
+- Vérifié sans problème : toutes les fenêtres (champs date compris) à 390, 375, 360 et 320 px ; vue Import ; Réglages dépliés.
+- Limite : Chromium, pas Safari iOS réel (comportement de `type=date` à confirmer sur l'iPhone, comme pour la version 34).
+- Libellés de lignes, de comptes et de règles : toujours coupés par « … » dans les listes (voulu) ; le nom complet est dans la fenêtre de modification.
 
 ## 2026-11-19 — Champs date : débordement sur iPhone 16e (version 34)
 

@@ -22,9 +22,9 @@ h3{margin:0 0 10px}
 .mut{color:var(--mut)}
 .s{font-size:12px;color:var(--mut)}
 .card{background:var(--card);border-radius:14px;padding:14px;margin:0 0 12px;box-shadow:0 1px 2px rgba(0,0,0,.06)}
-.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:12px}
 .grid .card{margin:0}
-.big{font-size:22px;font-weight:700;margin-top:2px}
+.big{font-size:clamp(17px,5.6vw,22px);font-weight:700;margin-top:2px;overflow-wrap:anywhere}
 .neg{color:var(--red)}.pos{color:var(--grn)}
 .warn{border-left:4px solid var(--warn)}
 .pseg{display:flex;gap:6px;margin:4px 0 8px}.pseg button{flex:1;border:1px solid var(--line);background:var(--card);color:var(--tx);border-radius:10px;padding:8px 2px;font-size:14px}.pseg button.on{background:var(--pri);border-color:var(--pri);color:#fff;font-weight:600}
@@ -68,7 +68,7 @@ summary::-webkit-details-marker{display:none}
 nav{position:fixed;left:0;right:0;bottom:0;display:flex;background:var(--card);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom)}
 nav button{flex:1;border:0;background:none;color:var(--mut);padding:12px 2px;font-size:12px}
 nav button.on{color:var(--pri);font-weight:700}
-#offbar{position:fixed;left:0;right:0;bottom:var(--navh,56px);height:28px;line-height:27px;padding:0 10px;text-align:center;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:#fef3c7;color:#92400e;border-top:1px solid #fcd34d;z-index:9;pointer-events:none}
+#offbar{position:fixed;left:0;right:0;bottom:var(--navh,56px);min-height:28px;line-height:1.25;padding:4px 10px;text-align:center;font-size:13px;overflow-wrap:anywhere;background:#fef3c7;color:#92400e;border-top:1px solid #fcd34d;z-index:9;pointer-events:none}
 #offbar[hidden]{display:none}
 @media(prefers-color-scheme:dark){#offbar{background:#3b2f0b;color:#fcd34d;border-color:#78591a}}
 body.off #app{padding-bottom:calc(120px + env(safe-area-inset-bottom))}
@@ -84,8 +84,9 @@ input[type=date]{-webkit-appearance:none;appearance:none;display:block;min-width
 .btns>*{flex:1}
 table{width:100%;border-collapse:collapse;font-size:13px}
 td,th{padding:4px;border-bottom:1px solid var(--line);text-align:left}
-.bud{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:8px;text-align:center}
-.bud .bv{font-size:18px;font-weight:700;margin-top:2px}
+.bud{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:8px;text-align:center}
+.bud>*{min-width:0}
+.bud .bv{font-size:clamp(13px,4.3vw,18px);font-weight:700;margin-top:2px;overflow-wrap:anywhere}
 </style>
 </head>
 <body>
@@ -104,7 +105,7 @@ const KEY='compte-salaire-v1';
 /* Épargne bloquée et Bien : comptent dans le patrimoine net seulement. Jamais dans le reste à vivre, le budget du jour, les soldes des comptes cochés ni « Sortir du découvert », et on n'y saisit pas de lignes : on met à jour leur valeur (solde de référence). */
 const ILLIQ={bloque:1,bien:1};
 const isLiquid=a=>!ILLIQ[a.type];
-const APP_VERSION='34';   // identique au numéro de la constante V de sw.js (compte-v34) : à incrémenter ensemble à chaque livraison
+const APP_VERSION='35';   // identique au numéro de la constante V de sw.js (compte-v35) : à incrémenter ensemble à chaque livraison
 const CATS={
  'Revenus':['Salaire','Primes','Remboursements','Intérêts','Autres revenus'],
  'Logement':['Loyer / crédit','Charges','Énergie','Internet / téléphone','Assurance habitation','Travaux / mobilier'],

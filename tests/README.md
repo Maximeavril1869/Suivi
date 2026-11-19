@@ -16,6 +16,7 @@ PYTHONDONTWRITEBYTECODE=1 python3 tests/test_replis.py
 PYTHONDONTWRITEBYTECODE=1 python3 tests/test_cartes_credit.py
 PYTHONDONTWRITEBYTECODE=1 python3 tests/test_budget_jour.py
 PYTHONDONTWRITEBYTECODE=1 python3 tests/test_decouvert_plafonds.py
+PYTHONDONTWRITEBYTECODE=1 python3 tests/test_debordements.py
 PYTHONDONTWRITEBYTECODE=1 python3 tests/test_comptes_accueil.py
 ```
 
@@ -32,6 +33,7 @@ Le script affiche `OK` ou `ECHEC` pour chaque vérification et se termine par le
 | `test_decouvert_plafonds.py` | Découvert et plafonds de carte : disponible réel (règle de l'utilisateur : plafond restant − dépassement, dans le découvert seul le plafond limite, plancher à 0, retrait non réduit, sans réglage), achats non détaillés d'une carte différée (solde de référence, pas de double comptage), fenêtres glissantes (30 et 7 jours, bornes), retraits, lignes exclues, cartes différées, prévision du solde le plus bas, budget du jour inchangé, carte sur l'Accueil, fiche du compte (saisie, validation, effacement, changement de type) |
 | `test_budget_jour.py` | Budget du jour : règle de paie (novembre, octobre, décembre, janvier, jours fériés, Pâques), modification et rétablissement d'une date, périodes de paie à paie, calcul (par jour, aujourd'hui, semaine, recalage le lendemain, virements et récurrences exclus, carte hors reste à vivre, budget négatif, dernier jour, dimanche, aucun compte), carte sur l'Accueil, carte « Jours de paie » dans Réglages, synchronisation du champ |
 | `test_cartes_credit.py` | Cartes de crédit : dette = plafond − solde (cas 2500 sur 3000), carte pleine, vide, plafond dépassé, centimes, achats et remboursements, poids de la carte dans les totaux (solde des comptes cochés, reste à vivre, liste des lignes), affichage Accueil et Réglages, fiche de compte (explication, case « reste à vivre » décochée à la sélection du type) |
+| `test_debordements.py` | Aucun débordement horizontal à 390, 375, 360 et 320 px (et montants à six chiffres à 390 et 320) : 5 vues (dont Lignes en sélection, Import avec fichier), rappel de sauvegarde et bannière « Hors ligne », 13 fenêtres et les 7 types de compte ; repère les éléments hors écran, hors de leur carte ou coupés |
 | `test_replis.py` | Marge en haut des pages (puces de comptes) ; menus repliables de Réglages : six cartes, état par défaut, plier / déplier, état conservé après nouveau rendu, changement d'onglet et rechargement, état propre à l'appareil (absent des données), état illisible ignoré, groupes d'organismes (replier un groupe, modifier un compte du groupe, un seul groupe, comptes sans organisme), menu Synchronisation non refermé par son rafraîchissement |
 | `test_regles_et_tiers.py` | Catégorie Animaux, tiers existants passés en majuscules (et enregistrés), saisie sans libellé (le tiers en tient lieu), règles dans Réglages : ajout, doublon refusé, aperçu à cocher avant reclassement, modification, ordre (la première règle l'emporte), suppression |
 
