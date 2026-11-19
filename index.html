@@ -116,7 +116,7 @@ const KEY='compte-salaire-v1';
 /* Épargne bloquée et Bien : comptent dans le patrimoine net seulement. Jamais dans le reste à vivre, le budget du jour, les soldes des comptes cochés ni « Sortir du découvert », et on n'y saisit pas de lignes : on met à jour leur valeur (solde de référence). */
 const ILLIQ={bloque:1,bien:1};
 const isLiquid=a=>!ILLIQ[a.type];
-const APP_VERSION='38';   // identique au numéro de la constante V de sw.js (compte-v38) : à incrémenter ensemble à chaque livraison
+const APP_VERSION='39';   // identique au numéro de la constante V de sw.js (compte-v39) : à incrémenter ensemble à chaque livraison
 const CATS={
  'Revenus':['Salaire','Primes','Remboursements','Intérêts','Autres revenus'],
  'Logement':['Loyer / crédit','Charges','Énergie','Internet / téléphone','Assurance habitation','Travaux / mobilier'],
@@ -1111,6 +1111,10 @@ function savePaLine(){
   paApply(l,from,amt,note,txCtx.pcur);
  }
  if(old)S.paie.lines[S.paie.lines.findIndex(x=>x.id===old.id)]=l;else S.paie.lines.push(l);
+ // mois déjà validés que la ligne couvre désormais (nouvelle ligne, début avancé, fin repoussée) mais où elle n'existe pas : on propose de l'y ajouter
+ const fill=Object.keys(S.paie.slips).filter(m=>paActive(l,m)&&!(old&&paActive(old,m))&&!S.paie.slips[m].rows.some(r=>r.k===l.id)).sort();
+ if(fill.length&&confirm('Ajouter « '+label+' » aux '+fill.length+' fiche'+(fill.length>1?'s':'')+' déjà validée'+(fill.length>1?'s':'')+' ('+(fill.length>1?'de '+monthLabel(fill[0])+' à '+monthLabel(fill[fill.length-1]):monthLabel(fill[0]))+') avec le montant du modèle ?'))
+  fill.forEach(m=>S.paie.slips[m].rows.push({k:l.id,label:l.label,kind:l.kind,amount:paAmt(l,m)}));
  save();closeModal();render();
 }
 const VIEWS={home:homeHTML,tx:linesHTML,rec:recHTML,imp:impHTML,set:setHTML,paie:paieHTML};

@@ -5,7 +5,7 @@ Les entrées les plus récentes sont en haut. À chaque intervention, ajouter un
 
 ## État actuel (2026-11-19)
 
-- **Version 38** : Bulletin de paye, sélection de fiches pour les supprimer (bouton « Sélectionner » dans Fiches validées) ; 122 vérifications sur le module, 258 d'affichage. **Version 37** : Bulletin de paye, **un changement de montant vaut pour les mois suivants** (comme les récurrences) ; 252 vérifications d'affichage et 106 sur le module. **Version 36** : module **Bulletin de paye** (suivi de l'évolution de chaque ligne du bulletin, à part des comptes ; nouvelle suite `tests/test_paie.py`, 11 suites, toutes vertes). **À valider sur iPhone et iPad** : la vue (page ouverte depuis Récurrent), les sélecteurs de mois (deux listes), le tableau à trois mois. Version 35 (audit des débordements d'écran : grilles de l'Accueil, bannière Hors ligne ; nouvelle suite `tests/test_debordements.py`, 10 suites, toutes vertes) ; version 34 (champs date iPhone) ; version 33 : patrimoine net (carte repliée sur l'Accueil), types « Épargne bloquée » et « Bien ». 9 suites de tests, toutes vertes (`tests/test_patrimoine.py` : 37 vérifications). Points ouverts : voir l'entrée du 2026-11-19.
+- **Version 39** : Bulletin de paye, une ligne créée dans le modèle est proposée aux fiches déjà validées (elle ne reste plus vide) ; 133 vérifications sur le module. **Version 38** : Bulletin de paye, sélection de fiches pour les supprimer (bouton « Sélectionner » dans Fiches validées) ; 122 vérifications sur le module, 258 d'affichage. **Version 37** : Bulletin de paye, **un changement de montant vaut pour les mois suivants** (comme les récurrences) ; 252 vérifications d'affichage et 106 sur le module. **Version 36** : module **Bulletin de paye** (suivi de l'évolution de chaque ligne du bulletin, à part des comptes ; nouvelle suite `tests/test_paie.py`, 11 suites, toutes vertes). **À valider sur iPhone et iPad** : la vue (page ouverte depuis Récurrent), les sélecteurs de mois (deux listes), le tableau à trois mois. Version 35 (audit des débordements d'écran : grilles de l'Accueil, bannière Hors ligne ; nouvelle suite `tests/test_debordements.py`, 10 suites, toutes vertes) ; version 34 (champs date iPhone) ; version 33 : patrimoine net (carte repliée sur l'Accueil), types « Épargne bloquée » et « Bien ». 9 suites de tests, toutes vertes (`tests/test_patrimoine.py` : 37 vérifications). Points ouverts : voir l'entrée du 2026-11-19.
 
 ### Rappel de l'état au 2026-11-16
 
@@ -21,6 +21,13 @@ Les entrées les plus récentes sont en haut. À chaque intervention, ajouter un
 - Service worker en version `compte-v17`.
 - Reste à faire : tester l'import CSV avec l'export réel de la banque (point en attente depuis la première version).
 - Aucune donnée réelle n'est stockée dans le dépôt.
+
+## 2026-11-19 — Bulletin de paye : une nouvelle ligne du modèle n'est plus vide (version 39)
+
+- Retour de l'utilisateur : « dans le modèle, ça crée la ligne mais vide ». Cause : une ligne créée avec un mois de départ déjà couvert par des fiches validées n'apparaissait ni dans « À valider » (le mois a déjà sa fiche) ni dans les fiches existantes.
+- Réalisé : à l'enregistrement d'une ligne du modèle, si des fiches déjà validées sont couvertes par la ligne (nouvelle ligne, début avancé, fin repoussée) et ne la contiennent pas, l'app propose de l'y ajouter avec le montant du modèle de chaque mois (confirmation avec le nombre de fiches et la période). Refus : la ligne est créée, les fiches restent intactes. Aucune question si la période couverte ne change pas : un mois laissé vide volontairement dans une fiche n'est pas ré-ajouté à chaque modification de la ligne.
+- Tests : `test_ligne_dans_fiches_existantes` (11 vérifications) dans `tests/test_paie.py`.
+- Point en suspens : le cas d'une ligne ajoutée dans une fiche (ponctuelle) ne se répète pas, comme décidé ; l'utilisateur a confirmé qu'il s'agissait du modèle.
 
 ## 2026-11-19 — Bulletin de paye : sélection et suppression de fiches (version 38)
 

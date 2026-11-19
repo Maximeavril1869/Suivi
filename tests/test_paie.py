@@ -370,6 +370,56 @@ def test_selection_suppression(browser):
     check('aucune erreur JavaScript', not pg.errors, pg.errors)
 
 
+def test_ligne_dans_fiches_existantes(browser):
+    print('Nouvelle ligne du modèle : proposée aux fiches déjà validées')
+    pg = device(browser, FauxSupabase())
+    msgs = []
+    refus = [False]
+    pg.on('dialog', lambda d: (msgs.append(d.message), d.dismiss() if refus[0] else d.accept()))
+    depart(pg)
+    ouvre_paie(pg)
+    mm = {k: mois(pg, k) for k in range(-3, 2)}
+    ajoute_ligne(pg, 'Brut', 'gain', '1000', mm[-3])
+    pg.click('[data-a=paiall]')
+    check('4 fiches validées avec une seule ligne', len(etat_paie(pg)['slips']) == 4 and all(len(s['rows']) == 1 for s in etat_paie(pg)['slips'].values()))
+    msgs.clear()
+    ajoute_ligne(pg, 'Indemnité', 'gain', '120,50', mm[-1])
+    check('question posée : 2 fiches (de il y a 1 mois à ce mois)', msgs and msgs[0].startswith('Ajouter « Indemnité » aux 2 fiches déjà validées'), msgs)
+    sl = etat_paie(pg)['slips']
+    check('ligne ajoutée aux fiches couvertes (début = mois choisi), avec le montant du modèle', [any(r['k'] == etat_paie(pg)['lines'][1]['id'] and r['amount'] == 120.5 for r in sl[mm[j]]['rows']) for j in (-3, -2, -1, 0)] == [False, False, True, True], [len(sl[mm[j]]['rows']) for j in (-3, -2, -1, 0)])
+    check('la ligne apparaît dans le tableau avec « — » avant son début', '120,50' in norm(pg.inner_text('table.pa')) and '—' in pg.inner_text('table.pa'))
+    # début avancé : les mois nouvellement couverts sont proposés
+    msgs.clear()
+    pg.click('[data-a=paiedit][data-id="%s"]' % etat_paie(pg)['lines'][1]['id'])
+    pick(pg, 'pl_start', mm[-3])
+    pg.click('[data-a=savepaline]')
+    check('début avancé de 2 mois : question pour les 2 mois nouvellement couverts seulement', msgs and msgs[0].startswith('Ajouter « Indemnité » aux 2 fiches'), msgs)
+    sl = etat_paie(pg)['slips']
+    check('les 4 fiches ont maintenant la ligne', all(any(r['label'] == 'Indemnité' for r in sl[mm[j]]['rows']) for j in (-3, -2, -1, 0)))
+    # modification sans changement de période : aucune question
+    msgs.clear()
+    pg.click('[data-a=paiedit][data-id="%s"]' % etat_paie(pg)['lines'][1]['id'])
+    pg.fill('#pl_lab', 'Indemnité de résidence')
+    pg.click('[data-a=savepaline]')
+    check('renommer la ligne : aucune question', msgs == [], msgs)
+    # fiche rouverte à blanc volontairement : pas rajoutée
+    pg.evaluate("(m) => { S.paie.slips[m].rows = S.paie.slips[m].rows.filter((r) => r.label === 'Brut'); save(); }", mm[-2])
+    pg.click('[data-a=paiedit][data-id="%s"]' % etat_paie(pg)['lines'][1]['id'])
+    pg.fill('#pl_lab', 'Indemnité')
+    pg.click('[data-a=savepaline]')
+    check('mois laissé vide volontairement : pas ré-ajouté à chaque modification', msgs == [] and not any(r['label'].startswith('Indemnité') for r in etat_paie(pg)['slips'][mm[-2]]['rows']), msgs)
+    # refus : la ligne est créée, les fiches restent intactes
+    refus[0] = True
+    ajoute_ligne(pg, 'Prime de test', 'gain', '50', mm[-3])
+    check('question refusée : la ligne est créée, aucune fiche modifiée', len(etat_paie(pg)['lines']) == 3 and all(not any(r['label'] == 'Prime de test' for r in s['rows']) for s in etat_paie(pg)['slips'].values()))
+    refus[0] = False
+    # ligne qui ne couvre aucun mois déjà validé : aucune question
+    msgs.clear()
+    ajoute_ligne(pg, 'Ligne future', 'gain', '10', mm[1])
+    check('ligne démarrant le mois prochain : aucune question', msgs == [], msgs)
+    check('aucune erreur JavaScript', not pg.errors, pg.errors)
+
+
 def test_validation_ligne(browser):
     print('Formulaire d\'une ligne : contrôles')
     pg = device(browser, FauxSupabase())
@@ -426,6 +476,7 @@ def main():
         test_parcours(browser)
         test_propagation(browser)
         test_selection_suppression(browser)
+        test_ligne_dans_fiches_existantes(browser)
         test_validation_ligne(browser)
         test_sync(browser)
         browser.close()
