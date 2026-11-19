@@ -434,8 +434,8 @@ def test_net_calcule(browser):
     pg.evaluate("() => { FOLD['paie-fiches'] = true; render(); }")
     sel = '[data-a=paislip][data-m="%s"]' % m
     t = norm(pg.inner_text(sel))
-    check('la fiche affiche son net calculé (2500 + 100,50 − 345,67 = 2 254,83)', '2 254,83 €' in t and 'Net calculé' in t, t)
-    check('la ligne « Net à payer » saisie n\'est pas affichée à la place (ni le brut)', '1 999,99' not in t and '2 600,50' not in t, t)
+    check('la fiche affiche son net calculé (2500 + 100,50 − 345,67 = 2 254,83)', '2 254,83 €' in t and 'Net à payer' in t, t)
+    check('la ligne « Net à payer » saisie n\'est pas lue à la place du net calculé', '1 999,99' not in t, t)
     check('plus de message d\'aide sur une ligne « Net à payer »', 'nomme une ligne' not in pg.inner_text('#app'))
     check('les lignes « total / information » ne comptent pas dans le calcul', pg.evaluate("(m) => paNet(S.paie.slips[m].rows)", m) == 2254.83)
     check('le net calculé ne dépend pas du nom des lignes', not pg.evaluate("() => paNet.toString().includes('NET') || typeof paNetRow !== 'undefined'"))
@@ -446,10 +446,41 @@ def test_net_calcule(browser):
     check('sans ligne « net à payer » : le net calculé est identique', '2 254,83 €' in norm(pg.inner_text(sel)))
     pg.evaluate("(m) => { S.paie.slips[m].rows = S.paie.slips[m].rows.filter((r) => r.kind !== 'gain'); render(); }", m)
     t = norm(pg.inner_text(sel))
-    check('sans aucune ligne de gain : tiret, jamais un montant négatif inventé', '—' in t and 'Net calculé' in t and '345' not in t, t)
+    check('sans aucune ligne de gain : tiret, jamais un montant négatif inventé', '—' in t and 'Net à payer' in t and '345' not in t, t)
     pg.evaluate("(m) => { S.paie.slips[m].rows = [{ k: 'a', label: 'Traitement', kind: 'gain', amount: 1000 }, { k: 'c', label: 'Retraite', kind: 'ret', amount: 1500 }]; render(); }", m)
     t = norm(pg.inner_text(sel))
     check('retenues supérieures aux gains : net calculé négatif affiché tel quel', '-500,00 €' in t or '−500,00 €' in t, t)
+    check('aucune erreur JavaScript', not pg.errors, pg.errors)
+
+
+def test_totaux_fiche(browser):
+    print('Brut, net avant impôt (sans prélèvement à la source), net à payer, retenues en % du brut')
+    pg = device(browser, FauxSupabase())
+    depart(pg)
+    m = mois(pg, 0)
+    rows = [{'k': 'a', 'label': 'Traitement', 'kind': 'gain', 'amount': 2000}, {'k': 'b', 'label': 'Primes', 'kind': 'gain', 'amount': 500},
+            {'k': 'c', 'label': 'Retraite', 'kind': 'ret', 'amount': 300}, {'k': 'p', 'label': 'Prélèvement à la source', 'kind': 'ret', 'amount': 200},
+            {'k': 'd', 'label': 'Net imprimé', 'kind': 'tot', 'amount': 1}]
+    pg.evaluate("([k, p]) => { const s = defaultState(); s.paie = p; localStorage.setItem(k, JSON.stringify(s)); }", [T.KEY, {'lines': [], 'skips': [], 'slips': {m: {'rows': rows}}}])
+    pg.reload()
+    ouvre_paie(pg)
+    pg.evaluate("() => { FOLD['paie-fiches'] = true; render(); }")
+    sel = '[data-a=paislip][data-m="%s"]' % m
+    t = norm(pg.inner_text(sel))
+    check('brut = tous les gains (2 500,00 €)', 'Brut' in t and '2 500,00 €' in t, t)
+    check('net à payer = gains − toutes les retenues (2 000,00 €)', 'Net à payer' in t and '2 000,00 €' in t, t)
+    check('net avant impôt = net à payer + prélèvement à la source (2 200,00 €)', 'Net avant impôt' in t and '2 200,00 €' in t, t)
+    check('retenues en % du brut ((300 + 200) ÷ 2500 = 20,0 %)', '20,0 %' in t, t)
+    check('lignes total / information ignorées', '1,00' not in t, t)
+    pg.evaluate("(m) => { S.paie.slips[m].rows[3].label = 'PRELEVEMENT  a la source (mensuel)'; render(); }", m)
+    check('libellé repéré sans tenir compte des accents ni de la casse', '2 200,00 €' in norm(pg.inner_text(sel)))
+    pg.evaluate("(m) => { S.paie.slips[m].rows[3].label = 'Impôt'; render(); }", m)
+    t = norm(pg.inner_text(sel))
+    check('sans ligne « Prélèvement à la source » : net avant impôt en tiret, net à payer inchangé', '2 000,00 €' in t and '2 200,00 €' not in t and pg.evaluate("(m) => paSums(S.paie.slips[m].rows).hasPas", m) is False, t)
+    pg.evaluate("(m) => { S.paie.slips[m].rows[3].kind = 'gain'; S.paie.slips[m].rows[3].label = 'Prélèvement à la source'; render(); }", m)
+    check('une ligne PAS qui n\'est pas une retenue n\'est pas prise pour le PAS', pg.evaluate("(m) => paSums(S.paie.slips[m].rows).hasPas", m) is False)
+    pg.evaluate("(m) => { S.paie.slips[m].rows = [{ k: 'a', label: 'X', kind: 'ret', amount: 5 }]; render(); }", m)
+    check('sans gain : pas de totaux, pas de division par zéro', '—' in norm(pg.inner_text(sel)) and 'NaN' not in pg.inner_text('#app') and 'Infinity' not in pg.inner_text('#app'))
     check('aucune erreur JavaScript', not pg.errors, pg.errors)
 
 
@@ -530,6 +561,7 @@ def main():
         test_selection_suppression(browser)
         test_ligne_dans_fiches_existantes(browser)
         test_net_calcule(browser)
+        test_totaux_fiche(browser)
         test_validation_ligne(browser)
         test_mois_ignores(browser)
         test_sync(browser)

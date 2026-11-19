@@ -43,6 +43,9 @@ button,.btn{font:inherit}
 .row .m{flex:1;min-width:0}
 .row .l{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .row .a{text-align:right}
+.row.pa-fl{flex-wrap:wrap}
+.pa-sum{flex:0 0 100%;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;font-size:13px}
+.pa-sum b{font-size:14px;overflow-wrap:anywhere}
 input,select{font:inherit;font-size:16px;width:100%;padding:11px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--tx);margin:4px 0 10px}
 label{display:block;font-size:13px;color:var(--mut)}
 .seg{display:flex;gap:8px;margin-bottom:10px}
@@ -116,7 +119,7 @@ const KEY='compte-salaire-v1';
 /* Épargne bloquée et Bien : comptent dans le patrimoine net seulement. Jamais dans le reste à vivre, le budget du jour, les soldes des comptes cochés ni « Sortir du découvert », et on n'y saisit pas de lignes : on met à jour leur valeur (solde de référence). */
 const ILLIQ={bloque:1,bien:1};
 const isLiquid=a=>!ILLIQ[a.type];
-const APP_VERSION='45';   // identique au numéro de la constante V de sw.js (compte-v45) : à incrémenter ensemble à chaque livraison
+const APP_VERSION='46';   // identique au numéro de la constante V de sw.js (compte-v46) : à incrémenter ensemble à chaque livraison
 const CATS={
  'Revenus':['Salaire','Primes','Remboursements','Intérêts','Autres revenus'],
  'Logement':['Loyer / crédit','Charges','Énergie','Internet / téléphone','Assurance habitation','Travaux / mobilier'],
@@ -884,6 +887,13 @@ function paSeries(){
 }
 /* Net calculé d'une fiche = somme des gains − somme des retenues (les lignes « total / information » ne comptent pas). Il peut différer du net à payer imprimé : les bulletins ont des lignes de base et de plafond qui ne s'additionnent pas. Affiché seulement si la fiche a au moins une ligne de gain. */
 const paNet=rows=>paR2(rows.reduce((t,r)=>t+(r.kind==='gain'?r.amount:r.kind==='ret'?-r.amount:0),0));
+/* Totaux d'une fiche : brut = tous les gains ; net à payer = gains − retenues ; net avant impôt = net à payer + ligne « Prélèvement à la source » (repérée par son libellé) ; ratio = retenues en % du brut. */
+const paIsPas=r=>r.kind==='ret'&&norm(r.label).includes('PRELEVEMENT A LA SOURCE');
+function paSums(rows){
+ const brut=paR2(rows.reduce((t,r)=>t+(r.kind==='gain'?r.amount:0),0)),ret=paR2(rows.reduce((t,r)=>t+(r.kind==='ret'?r.amount:0),0));
+ const pasRows=rows.filter(paIsPas),pas=paR2(pasRows.reduce((t,r)=>t+r.amount,0)),net=paR2(brut-ret);
+ return{brut,ret,net,hasPas:pasRows.length>0,avant:paR2(net+pas),ratio:brut>0?Math.round(ret/brut*1000)/10:null};
+}
 function paChange(hist,cur,from,amt,note){
  const h=(hist&&hist.length?hist:[{from:'0000-00',amount:cur}]).filter(e=>e.from<from);
  if(!h.length)h.push({from:'0000-00',amount:cur});
@@ -988,7 +998,9 @@ function paSlipsHTML(){
  }else h+=`<div style="text-align:right;margin-bottom:4px"><button class="ghost small" data-a="paisel">Sélectionner</button></div>`;
  return h+ms.slice().reverse().map(m=>{
   const rows=S.paie.slips[m].rows,on=sm&&sm.has(m),ok=rows.some(r=>r.kind==='gain');
-  return `<div class="row" data-a="${sm?'paitog':'paislip'}" data-m="${m}">${sm?`<div style="font-size:20px;width:28px;flex:none" aria-hidden="true">${on?'☑':'☐'}</div>`:''}<div class="m"><div class="l">${esc(monthLabel(m))}</div><div class="s">${rows.length} ligne${rows.length>1?'s':''}</div></div>${ok?`<div class="a"><b>${paFmt(paNet(rows))} €</b><div class="s">Net calculé</div></div>`:`<div class="a"><span class="mut">—</span><div class="s">Net calculé</div></div>`}</div>`;}).join('');
+  const t=paSums(rows);
+  return `<div class="row pa-fl" data-a="${sm?'paitog':'paislip'}" data-m="${m}">${sm?`<div style="font-size:20px;width:28px;flex:none" aria-hidden="true">${on?'☑':'☐'}</div>`:''}<div class="m"><div class="l">${esc(monthLabel(m))}</div><div class="s">${rows.length} ligne${rows.length>1?'s':''}</div></div>${ok?`<div class="a"><b>${paFmt(t.net)} €</b><div class="s">Net à payer</div></div>`:`<div class="a"><span class="mut">—</span><div class="s">Net à payer</div></div>`}${ok?`<div class="pa-sum"><div><div class="s">Brut</div><b>${paFmt(t.brut)} €</b></div><div><div class="s">Net avant impôt</div><b>${t.hasPas?paFmt(t.avant)+' €':'—'}</b></div><div><div class="s">Retenues / brut</div><b>${t.ratio===null?'—':paNum(t.ratio.toFixed(1))+' %'}</b></div></div>`:''}</div>`;
+ }).join('');
 }
 function paModelHTML(){
  const L=S.paie.lines,now=monthOf(today());
