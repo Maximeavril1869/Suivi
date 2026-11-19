@@ -73,6 +73,18 @@ JS_AUDIT = r"""
 """
 
 
+def paie(x=1):
+    """Bulletin de paye : lignes aux libellés très longs, montants à six chiffres (x=50), quatre fiches validées."""
+    noms = [('Traitement indiciaire brut de la fonction publique d’État', 'gain', 2500.55), ('Indemnité de résidence et supplément familial de traitement', 'gain', 123.45),
+            ('Cotisation retraite additionnelle de la fonction publique', 'ret', 345.67), ('Net à payer avant impôt sur le revenu', 'tot', 2100.1)]
+    lignes = [{'id': 'l%d' % i, 'label': n, 'kind': k, 'amount': round(a * x, 2), 'start': '2026-07', 'end': ''} for i, (n, k, a) in enumerate(noms)]
+    fiches = {}
+    for j, m in enumerate(['2026-07', '2026-08', '2026-09', '2026-10']):
+        fiches[m] = {'rows': [{'k': l['id'], 'label': l['label'], 'kind': l['kind'], 'amount': round(l['amount'] + j * 10 * x, 2)} for l in lignes]
+                     + ([{'k': 'x:prime', 'label': 'Prime exceptionnelle de fin d’année très longue', 'kind': 'gain', 'amount': 1234.56 * x}] if j == 3 else [])}
+    return {'lines': lignes, 'slips': fiches, 'skips': []}
+
+
 def etat(pg, x=1):
     long_nom = 'Compte courant joint avec un nom volontairement très long pour tester'
 
@@ -99,7 +111,7 @@ def etat(pg, x=1):
               'items': [{'date': '2026-11-20', 'amount': -250}, {'date': '2026-12-20', 'amount': -250}, {'date': '2027-01-20', 'amount': -250}]}]
     rules = [{'kw': 'MOT-CLE TRES LONG POUR UNE REGLE DE CLASSEMENT AUTOMATIQUE', 'cat': 'Animaux', 'sub': 'Alimentation', 'payee': 'TIERS AVEC UN NOM TRES LONG'}]
     s = {'v': 2, 'accounts': comptes, 'shown': ['a1', 'a2', 'a5', 'a6', 'a7'], 'tx': tx, 'rec': rec, 'plans': plans, 'rules': rules,
-         'budgets': {'Logement': 500}, 'payDates': {}, 'csvMaps': {}, 'skips': []}
+         'budgets': {'Logement': 500}, 'payDates': {}, 'csvMaps': {}, 'skips': [], 'paie': paie(x)}
     pg.evaluate("([k, v]) => localStorage.setItem(k, JSON.stringify(v))", [T.KEY, s])
     pg.evaluate("() => localStorage.removeItem('compte-replis')")
     pg.reload()
@@ -142,6 +154,16 @@ def vues(pg, largeur):
         if v == 'home':
             pg.evaluate("() => document.querySelectorAll('details').forEach((d) => { d.open = true; })")
         audit(pg, 'vue ' + nom, largeur)
+    # vue Bulletin de paye (tableau, courbe, fiches, modèle dépliés), à valider (novembre non validé)
+    nav(pg, 'rec')
+    audit(pg, 'vue Récurrent avec la carte Bulletin de paye', largeur)
+    pg.evaluate("() => { view = 'paie'; Object.assign(FOLD, {'paie-evo': true, 'paie-crb': true, 'paie-fiches': true, 'paie-mod': true, 'paie-hist': true}); render(); document.querySelectorAll('details').forEach((d) => { d.open = true; }); }")
+    audit(pg, 'vue Bulletin de paye (tout déplié)', largeur)
+    pg.evaluate("() => { paWin = 1; render(); document.querySelectorAll('details').forEach((d) => { d.open = true; }); }")
+    audit(pg, 'vue Bulletin de paye (fenêtre décalée)', largeur)
+    pg.evaluate("() => { paWin = 0; paSel = 'x:prime'; render(); document.querySelectorAll('details').forEach((d) => { d.open = true; }); }")
+    audit(pg, 'vue Bulletin de paye (courbe d\'une seule fiche)', largeur)
+    pg.evaluate("() => { paSel = ''; view = 'rec'; render(); }")
     # vue Lignes en mode sélection
     nav(pg, 'tx')
     pg.evaluate("() => { sel = new Set(['t1', 't2']); render(); }")
@@ -171,6 +193,10 @@ def fenetres(pg, largeur):
         ('règle (existante)', "() => openRule(S.rules[0].kw)"),
         ('paie', "() => openPay(today().slice(0, 7))"),
         ('compte (nouveau)', "() => openAcc()"),
+        ('bulletin : fiche à valider', "() => openSlip('2026-11')"),
+        ('bulletin : fiche validée', "() => openSlip('2026-10')"),
+        ('bulletin : ligne (nouvelle)', "() => openPaLine()"),
+        ('bulletin : ligne (existante)', "() => { openPaLine('l0'); $('pl_fromw').style.display = 'block'; }"),
         ('modification groupée', "() => { sel = new Set(['t1', 't2']); openBulk(); }"),
         ('aperçu de règle', "() => openRulePreview(S.rules[0], S.tx.slice(0, 6))"),
     ]

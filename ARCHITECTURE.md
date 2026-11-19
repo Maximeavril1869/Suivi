@@ -16,6 +16,7 @@ Application de suivi de budget **locale d'abord** : une PWA sans framework et sa
 | `tests/test_regles_et_tiers.py` | Tests de la catégorie Animaux, des tiers en majuscules, du libellé facultatif et des règles dans Réglages |
 | `tests/test_replis.py` | Tests des menus repliables de Réglages (cartes et groupes d'organismes) |
 | `tests/test_debordements.py` | Tests de non-débordement horizontal (390 à 320 px) de toutes les vues et fenêtres |
+| `tests/test_paie.py` | Tests du module Bulletin de paye (données, modèle, fiches, tableau, courbe, aucun effet sur les comptes, synchronisation) |
 | `JOURNAL.md` | Carnet de bord du projet |
 | `ARCHITECTURE.md` | Ce document |
 
@@ -56,6 +57,7 @@ Contenu de l'état `S` :
 | `payDates` | Dates de paie modifiées à la main, `{'AAAA-MM': 'AAAA-MM-JJ'}` ; absent = règle (voir « Budget du jour ») |
 | `csvMaps` | Correspondance de colonnes mémorisée par format de CSV |
 | `skips` | Échéances ignorées |
+| `paie` | Module Bulletin de paye, **sans lien avec les comptes** : `lines` (modèle), `slips` (fiches validées par mois), `skips` (mois ignorés) ; voir « Bulletin de paye » |
 | `lastExport` | Date de la dernière sauvegarde |
 | `bk` | État du rappel de sauvegarde : `since` (date de la première modification non sauvegardée), `snooze` (rappel reporté jusqu'à), `every` (délai en jours : 0, 3, 7, 14 ou 30 ; 7 par défaut) |
 
@@ -74,6 +76,8 @@ Navigation en bas, 5 vues (objet `VIEWS`) :
 | Récurrent | `recHTML` | Échéances à valider, récurrences, paiements en plusieurs fois |
 | Import | `impHTML` | Import CSV avec choix des colonnes |
 | Réglages | `setHTML` | Menus repliables : Comptes (groupés par organisme), budgets, jours de paie, règles, synchronisation, sauvegarde et restauration, zone dangereuse |
+
+Une sixième vue, **Bulletin de paye** (`paieHTML`), n'a pas d'onglet : on l'ouvre depuis une carte de Récurrent (voir « Bulletin de paye »).
 
 Les formulaires sont des modales (`openTx`, `openAcc`, `openRec`, `openPlan`, `openXfer`, `openBulk`), enregistrées par les fonctions `save…`. Un seul gestionnaire d'événements, `act()`, répartit les actions via les attributs `data-a`.
 
@@ -114,6 +118,33 @@ Pour chaque compte courant ayant au moins un de ces réglages (fiche du compte),
 - **Prévision** : solde du jour + échéances à venir de la période (`dueRange`, y compris le prélèvement d'une carte à débit différé sur ce compte) ; la carte indique le solde le plus bas prévu, sa date, et « Dépassement prévu » s'il passe sous −découvert.
 - **Le découvert n'entre jamais** dans le budget du jour, le reste à vivre ni les totaux (choix de l'utilisateur : c'est une limite à ne pas atteindre).
 
+## Bulletin de paye (suivi de l'évolution de chaque ligne)
+
+Module séparé, **sans effet sur les comptes, soldes, lignes, récurrences, budget du jour ni patrimoine** : il ne lit ni n'écrit `accounts` ni `tx`. Il suit, mois après mois, les lignes d'un bulletin de paye saisies à la main (brut, primes, cotisations, impôt, net à payer…). Vue `paie` (`paieHTML`), qui n'a pas d'onglet : on l'ouvre par la carte « Bulletin de paye » de Récurrent (`paieEntryHTML`), l'onglet Récurrent reste actif, la flèche ‹ revient.
+
+```mermaid
+flowchart LR
+  M[Modèle S.paie.lines<br/>montants datés hist] -->|paDue : mois sans fiche| D[À valider]
+  D -->|Valider / Tout valider| F[Fiches S.paie.slips<br/>lignes figées du mois]
+  P[Lignes ponctuelles<br/>primes] --> F
+  F --> T[Tableau 3 mois]
+  F --> C[Courbe d'une ligne]
+```
+
+| Donnée | Contenu |
+|---|---|
+| `paie.lines[]` | Modèle : `id`, `label`, `kind` (`gain`, `ret` = retenue, `tot` = total ou information), `amount` (montant actuel), `start` et `end` (mois `AAAA-MM`, `end` facultatif), `hist` (montants datés `{from:'AAAA-MM', amount, note?}`, première entrée `0000-00`) |
+| `paie.slips{'AAAA-MM'}` | Fiche validée : `rows[]` = `{k, label, kind, amount}` **figées** (clé `k` = id de la ligne du modèle, ou `x:` + libellé normalisé pour une ligne ponctuelle) |
+| `paie.skips[]` | Mois ignorés (ne reviennent plus dans « À valider ») |
+
+- **Montants** saisis comme sur le bulletin : toujours positifs (valeur absolue), le type donne le sens.
+- **Cycle d'un mois** : `paDue()` liste les mois, du plus ancien début de ligne jusqu'au mois courant, sans fiche et non ignorés, où au moins une ligne est active (`paActive`). **Valider** ouvre `openSlip` pré-rempli avec `paAmt` (montant du modèle à ce mois) ; on corrige, on ajoute des lignes ponctuelles, on enregistre (`saveSlip`). « Tout valider » crée les fiches d'après le modèle (`paRowsFromModel`). Une case laissée vide = ligne absente ce mois-ci.
+- **Changement de grade / d'échelon** : dans la fiche d'une ligne, changer le montant demande le mois d'application (et un motif facultatif) ; `paChange` ajoute une entrée à `hist` (même principe que `changeAmount` des récurrences). **Les fiches déjà validées ne changent pas** (différence voulue avec les récurrences : c'est du réel) ; les mois à venir ou pas encore validés prennent le nouveau montant.
+- **Séries** (`paSeries`) : regroupe les lignes des fiches par clé `k`, triées gains, retenues, totaux puis ordre de création. Une ligne supprimée du modèle reste dans l'historique ; à la réouverture d'une fiche elle devient une ligne ponctuelle qui **garde sa clé d'origine** tant que son libellé ne change pas (la série ne se casse pas). Deux lignes ponctuelles de même libellé (casse et accents près) dans un même mois sont refusées.
+- **Affichage** : « À valider » ; tableau (`paTableHTML`) trois mois à la fois, `table-layout:fixed` donc sans défilement horizontal, flèches pour reculer ; montant différent de la fiche précédente en gras et en couleur (classe `chg`) ; courbe SVG (`paChartHTML`) d'une ligne au choix (`#pa_sel`, par défaut la première ligne de type total), 2 px, points de 8 px avec contour de la couleur de la carte, zones de toucher de 28 px (`paipt`), valeur et écart avec le mois précédent sous la courbe ; historique de la ligne avec les motifs ; fiches validées ; modèle. Cartes repliables (clés `paie-evo`, `paie-crb`, `paie-fiches`, `paie-mod`, `paie-hist`), état propre à l'appareil comme les autres menus.
+- **Sélecteur de mois** (`paPick`) : deux listes (mois, année), pas de champ `type=month` (comportement de Safari iOS non maîtrisé, cf. champs date de la version 34).
+- **Synchronisation** : champ `paie` dans `SYNC_META_FIELDS`, donc dans la ligne `meta` chiffrée (quelques kilo-octets) ; rien de lisible côté serveur. Exporté et restauré avec le reste (`migrate` normalise une structure absente ou invalide).
+
 ## Choix des comptes (Accueil, Lignes, Récurrent)
 
 Les trois vues commencent par la même carte `accFoldHTML` (plus de rangée de puces) : une carte repliable (clé `hacc`, repliée par défaut) dont le titre donne « Comptes : N sur M · solde » (même total que « Solde des comptes cochés » : `balanceAt(date, false)`). Dépliée : les comptes par organisme (groupes repliables, clés `h:<nom>`, ouverts par défaut), chacun avec sa case ☑/☐ et son solde, plus « Tout cocher » / « Tout décocher » (action `allacc`). Sans organisme : liste plate. Un seul compte : pas de carte. Le choix (`S.shown`, propre à l'appareil) est le même pour toutes les pages, et l'état ouvert / replié aussi (mécanisme `FOLD` des menus de Réglages, clés `hacc` et `h:<nom>` partagées par les trois vues).
@@ -143,7 +174,7 @@ Règles à tenir pour qu'aucune vue ni fenêtre ne dépasse l'écran (vérifié 
 ## Mise à jour et déploiement
 
 - Hébergement : GitHub Pages à partir du dépôt (branche par défaut `main`).
-- Le service worker (`sw.js`) a une version de cache (constante `V`, actuellement `compte-v32`). **À chaque modification publiée, incrémenter cette version** pour que l'iPhone récupère la nouvelle app, **et la constante `APP_VERSION` de `index.html`** (même numéro : `22` pour `compte-v22`), affichée en bas de Réglages (« Mon Compte · version 22 ») pour vérifier quelle version tourne sur l'appareil.
+- Le service worker (`sw.js`) a une version de cache (constante `V`, actuellement `compte-v36`). **À chaque modification publiée, incrémenter cette version** pour que l'iPhone récupère la nouvelle app, **et la constante `APP_VERSION` de `index.html`** (même numéro : `22` pour `compte-v22`), affichée en bas de Réglages (« Mon Compte · version 22 ») pour vérifier quelle version tourne sur l'appareil.
 - Aucune étape de build : modifier `index.html`, commiter, pousser.
 
 ## Synchronisation chiffrée

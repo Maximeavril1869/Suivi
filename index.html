@@ -87,6 +87,17 @@ td,th{padding:4px;border-bottom:1px solid var(--line);text-align:left}
 .bud{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:8px;text-align:center}
 .bud>*{min-width:0}
 .bud .bv{font-size:clamp(13px,4.3vw,18px);font-weight:700;margin-top:2px;overflow-wrap:anywhere}
+/* Bulletin de paye : sélecteurs de mois (deux listes, pas de champ month de Safari) et tableau sans défilement horizontal */
+.pk{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:8px}
+.pk select,.pk2 select,.pk2 input{min-width:0}
+.pk2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px}
+.pa-x{border:1px solid var(--line);border-radius:10px;padding:8px 8px 0;margin-bottom:8px}
+table.pa{table-layout:fixed;font-size:12px}
+table.pa th.l,table.pa td.l{width:30%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+table.pa th.n,table.pa td.n{text-align:right;white-space:nowrap;padding-left:2px;padding-right:2px}
+table.pa th{color:var(--mut);font-weight:600}
+table.pa td.chg{font-weight:700;color:var(--pri)}
+table.pa td.grp{color:var(--mut);font-size:11px;font-weight:700;text-transform:uppercase;padding-top:10px;border-bottom:0}
 </style>
 </head>
 <body>
@@ -105,7 +116,7 @@ const KEY='compte-salaire-v1';
 /* Épargne bloquée et Bien : comptent dans le patrimoine net seulement. Jamais dans le reste à vivre, le budget du jour, les soldes des comptes cochés ni « Sortir du découvert », et on n'y saisit pas de lignes : on met à jour leur valeur (solde de référence). */
 const ILLIQ={bloque:1,bien:1};
 const isLiquid=a=>!ILLIQ[a.type];
-const APP_VERSION='35';   // identique au numéro de la constante V de sw.js (compte-v35) : à incrémenter ensemble à chaque livraison
+const APP_VERSION='36';   // identique au numéro de la constante V de sw.js (compte-v36) : à incrémenter ensemble à chaque livraison
 const CATS={
  'Revenus':['Salaire','Primes','Remboursements','Intérêts','Autres revenus'],
  'Logement':['Loyer / crédit','Charges','Énergie','Internet / téléphone','Assurance habitation','Travaux / mobilier'],
@@ -118,7 +129,7 @@ const CATS={
  'Divers':['Cadeaux','Imprévus','Retrait d\'espèces','Non classé']
 };
 const RK='Loisirs|Restaurants / bars';
-const defaultState=()=>({v:2,accounts:[{id:'a1',name:'Compte salaire',type:'courant',opening:0,cash:true}],shown:['a1'],tx:[],rec:[],plans:[],rules:[],budgets:{},payDates:{},csvMaps:{},skips:[],lastExport:null,bk:{since:null,snooze:null,every:7}});
+const defaultState=()=>({v:2,accounts:[{id:'a1',name:'Compte salaire',type:'courant',opening:0,cash:true}],shown:['a1'],tx:[],rec:[],plans:[],rules:[],budgets:{},payDates:{},csvMaps:{},skips:[],paie:{lines:[],slips:{},skips:[]},lastExport:null,bk:{since:null,snooze:null,every:7}});
 /* Rappel de sauvegarde (partagé entre appareils, clé « bk » de la ligne meta) : since = date de la première modification non sauvegardée,
    snooze = rappel reporté jusqu'à cette date, every = délai en jours (0 = jamais). Le rappel n'apparaît que s'il y a des modifications non sauvegardées. */
 const BK_EVERY=[0,3,7,14,30],BK_DEFAULT=7;
@@ -149,6 +160,10 @@ function migrate(raw){
   if(a.anchor){a.adj=Math.round((a.anchor.amount-o.tx.filter(x=>x.acc===a.id&&x.date<=a.anchor.date).reduce((s,x)=>s+x.amount,0))*100)/100;a.opening=0;}
  });
  if(!o.payDates||typeof o.payDates!=='object'||Array.isArray(o.payDates))o.payDates={};
+ if(!o.paie||typeof o.paie!=='object'||Array.isArray(o.paie))o.paie={};
+ if(!Array.isArray(o.paie.lines))o.paie.lines=[];
+ if(!o.paie.slips||typeof o.paie.slips!=='object'||Array.isArray(o.paie.slips))o.paie.slips={};
+ if(!Array.isArray(o.paie.skips))o.paie.skips=[];
  delete o.opening;o.v=2;return o;
 }
 function load(){try{const r=localStorage.getItem(KEY);if(r)return migrate(JSON.parse(r));}catch(e){}return migrate(null);}
@@ -722,7 +737,7 @@ function recHTML(){
  h+=due.length?due.map(x=>`<div class="row"><div class="d">${x.d.slice(8)}/${x.d.slice(5,7)}</div><div class="m"><div class="l">${esc(x.r.label)}</div><div class="s">${esc(x.r.cat)} › ${esc(x.r.sub)}</div></div><div class="a"><div class="${x.amount<0?'neg':'pos'}">${fmt(x.amount)}</div><div style="margin-top:4px"><button class="primary small" data-a="validate" data-k="${esc(x.k)}">Valider</button> <button class="ghost small" data-a="skip" data-k="${esc(x.k)}">Ignorer</button></div></div></div>`).join(''):'<p class="mut">Rien à valider.</p>';
  h+=`</div><div class="card"><b>Mes récurrences</b>`;
  h+=S.rec.length?S.rec.map(r=>`<div class="row" data-a="editrec" data-id="${esc(r.id)}"><div class="m"><div class="l">${esc(r.label)}</div><div class="s">${esc(freqText(r))} · ${esc(r.cat)} › ${esc(r.sub)}${S.accounts.length>1?' · '+esc(accName(r.acc)):''}</div></div><div class="a ${amountAt(r,today())<0?'neg':'pos'}">${fmt(amountAt(r,today()))}</div></div>`).join(''):'<p class="mut">Aucune récurrence.</p>';
- h+=`</div><div class="card"><b>Paiements en plusieurs fois</b>${planRowsHTML()}</div><div class="btns"><button class="primary" data-a="newrec">Ajouter une récurrence</button><button class="primary" data-a="newplan">Paiement en plusieurs fois</button></div>`;
+ h+=`</div><div class="card"><b>Paiements en plusieurs fois</b>${planRowsHTML()}</div>${paieEntryHTML()}<div class="btns"><button class="primary" data-a="newrec">Ajouter une récurrence</button><button class="primary" data-a="newplan">Paiement en plusieurs fois</button></div>`;
  return h;
 }
 function guessCol(header,re){const i=header.findIndex(h=>re.test(h));return i>=0?i:-1;}
@@ -828,10 +843,236 @@ const grp=[];S.accounts.forEach(a=>{const g=a.group||'';let e=grp.find(x=>x.g===
  ${foldCard('danger','Zone dangereuse',`<p class="s">Efface toutes les données de l'app sur ce téléphone.</p><button class="danger" data-a="wipe">Tout effacer</button>`,false)}
  <p class="s" id="app-version" style="text-align:center;margin:14px 0 0">Mon Compte · version ${APP_VERSION}</p>`;
 }
-const VIEWS={home:homeHTML,tx:linesHTML,rec:recHTML,imp:impHTML,set:setHTML};
+/* ---------- Bulletin de paye : suivi de l'évolution de chaque ligne (module à part) ----------
+   Aucun lien avec les comptes ni les lignes : ni solde, ni reste à vivre, ni budget du jour, ni patrimoine.
+   S.paie = { lines: modèle (lignes qui se répètent chaque mois, montants datés), slips: fiches validées {'AAAA-MM':{rows}}, skips: mois ignorés }. */
+const PA_KINDS={gain:'Gain',ret:'Retenue',tot:'Total / information'};
+const PA_RANK={gain:0,ret:1,tot:2};
+const PA_MOIS=['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
+let paWin=0,paSel='',paPt=-1;
+const paFmt=n=>new Intl.NumberFormat('fr-FR',{minimumFractionDigits:2,maximumFractionDigits:2}).format(n);
+const paR2=n=>Math.round(n*100)/100;
+const paNum=n=>String(n).replace('.',',');
+function paAmt(l,ym){
+ if(!l.hist||!l.hist.length)return l.amount;
+ let v=l.hist[0].amount;
+ for(const e of l.hist){if(e.from<=ym)v=e.amount;}
+ return v;
+}
+const paActive=(l,ym)=>ym>=l.start&&(!l.end||ym<=l.end);
+function paDue(){
+ const L=S.paie.lines;if(!L.length)return[];
+ const first=L.reduce((m,l)=>l.start<m?l.start:m,L[0].start),cur=monthOf(today());
+ const out=[];
+ for(let m=first,n=0;m<=cur&&n<600;m=addMonths(m,1),n++){
+  if(S.paie.slips[m]||S.paie.skips.includes(m))continue;
+  if(L.some(l=>paActive(l,m)))out.push(m);
+ }
+ return out;
+}
+const paSlipMonths=()=>Object.keys(S.paie.slips).sort();
+function paRowsFromModel(ym){return S.paie.lines.filter(l=>paActive(l,ym)).map(l=>({k:l.id,label:l.label,kind:l.kind,amount:paAmt(l,ym)}));}
+function paSeries(){
+ const map=new Map(),order=S.paie.lines.map(l=>l.id);
+ paSlipMonths().forEach(m=>S.paie.slips[m].rows.forEach(r=>{
+  let s=map.get(r.k);if(!s){s={k:r.k,label:r.label,kind:r.kind,vals:{}};map.set(r.k,s);}
+  s.label=r.label;s.kind=r.kind;s.vals[m]=r.amount;
+ }));
+ const arr=[...map.values()];
+ arr.forEach((s,i)=>{const o=order.indexOf(s.k);s.i=o>=0?o:1000+i;});
+ return arr.sort((a,b)=>PA_RANK[a.kind]-PA_RANK[b.kind]||a.i-b.i);
+}
+function paChange(hist,cur,from,amt,note){
+ const h=(hist&&hist.length?hist:[{from:'0000-00',amount:cur}]).filter(e=>e.from<from);
+ if(!h.length)h.push({from:'0000-00',amount:cur});
+ const e={from,amount:amt};if(note)e.note=note;h.push(e);
+ return h.sort((x,y)=>x.from<y.from?-1:x.from>y.from?1:0);
+}
+const paShort=m=>{const [y,mm]=m.split('-').map(Number);return new Date(y,mm-1,1).toLocaleDateString('fr-FR',{month:'short',year:'2-digit'});};
+function paPick(id,val,opt){
+ let p=/^\d{4}-\d{2}$/.test(val||'')?val.split('-').map(Number):null;
+ if(!p&&!opt)p=monthOf(today()).split('-').map(Number);
+ p=p||[0,0];
+ const cy=new Date().getFullYear();let y0=cy-30,y1=cy+2;if(p[0]&&p[0]<y0)y0=p[0];if(p[0]>y1)y1=p[0];
+ const none=opt?'<option value="">—</option>':'';
+ let ys='';for(let y=y1;y>=y0;y--)ys+=`<option value="${y}"${y===p[0]?' selected':''}>${y}</option>`;
+ const ms=PA_MOIS.map((n,i)=>`<option value="${i+1}"${i+1===p[1]?' selected':''}>${n}</option>`).join('');
+ return `<div class="pk"><select id="${id}_m">${none}${ms}</select><select id="${id}_y">${none}${ys}</select></div>`;
+}
+function paPickVal(id){const m=$(id+'_m').value,y=$(id+'_y').value;return m&&y?y+'-'+pad(Number(m)):'';}
+
+/* --- affichage --- */
+function paieEntryHTML(){
+ const due=S.paie.lines.length?paDue().length:0,ms=paSlipMonths();
+ const sub=!S.paie.lines.length&&!ms.length?'Suis l\'évolution de chaque ligne de ton bulletin, mois après mois.':(due?due+' mois à valider':'Rien à valider')+(ms.length?' · dernière fiche : '+monthLabel(ms[ms.length-1]):'');
+ return `<div class="card"><div class="row" data-a="openpaie" style="padding-top:0"><div class="m"><div class="l"><b>Bulletin de paye</b></div><div class="s">${esc(sub)}</div></div><div class="a mut">›</div></div></div>`;
+}
+function paDueHTML(){
+ if(!S.paie.lines.length)return '';
+ const due=paDue();
+ let h=`<div class="card"><b>À valider</b>`;
+ if(!due.length)return h+'<p class="mut">Rien à valider.</p></div>';
+ h+=due.slice(0,12).map(m=>`<div class="row"><div class="m"><div class="l">${esc(monthLabel(m))}</div></div><div class="a"><button class="primary small" data-a="paiopen" data-m="${m}">Valider</button> <button class="ghost small" data-a="paiskip" data-m="${m}">Ignorer</button></div></div>`).join('');
+ if(due.length>12)h+=`<p class="s">… et ${due.length-12} mois plus récents ou plus anciens à suivre.</p>`;
+ if(due.length>1)h+=`<div style="margin-top:8px"><button class="ghost" style="width:100%" data-a="paiall">Tout valider avec les montants du modèle (${due.length} mois)</button></div>`;
+ return h+'</div>';
+}
+function paTableHTML(){
+ const ms=paSlipMonths(),ser=paSeries();
+ if(!ms.length)return '<p class="mut">Aucune fiche validée pour l\'instant.</p>';
+ const e=ms.length-paWin,b=Math.max(0,e-3),cols=ms.slice(b,e);
+ let h=`<div class="mnav" style="margin:0 0 6px"><button data-a="pawin" data-d="1" aria-label="Mois plus anciens" ${b===0?'disabled':''}>‹</button><span class="s">${esc(paShort(cols[0]))}${cols.length>1?' → '+esc(paShort(cols[cols.length-1])):''}</span><button data-a="pawin" data-d="-1" aria-label="Mois plus récents" ${paWin===0?'disabled':''}>›</button></div>`;
+ h+=`<table class="pa"><thead><tr><th class="l"></th>${cols.map(m=>`<th class="n">${esc(paShort(m))}</th>`).join('')}</tr></thead><tbody>`;
+ let last='';
+ ser.forEach(s=>{
+  if(s.kind!==last){last=s.kind;h+=`<tr><td colspan="${cols.length+1}" class="grp">${esc(PA_KINDS[s.kind])}</td></tr>`;}
+  h+=`<tr><td class="l">${esc(s.label)}</td>${cols.map(m=>{
+   const v=s.vals[m];if(v===undefined)return '<td class="n mut">—</td>';
+   const i=ms.indexOf(m),pv=i>0?s.vals[ms[i-1]]:undefined;
+   const ch=pv!==undefined&&Math.abs(pv-v)>=0.005;
+   return `<td class="n${ch?' chg':''}">${paFmt(v)}</td>`;}).join('')}</tr>`;
+ });
+ return h+'</tbody></table><p class="s">Montant en gras et en couleur : différent de la fiche précédente. Montants en euros, tels que sur le bulletin.</p>';
+}
+function paChartHTML(){
+ const ser=paSeries();
+ if(!ser.length)return '<p class="mut">La courbe apparaît dès la première fiche validée.</p>';
+ if(!ser.some(s=>s.k===paSel))paSel=(ser.find(s=>s.kind==='tot')||ser[0]).k;
+ const s=ser.find(x=>x.k===paSel);
+ const ms=paSlipMonths().filter(m=>s.vals[m]!==undefined);
+ const sel=`<label>Ligne<select id="pa_sel">${ser.map(x=>`<option value="${esc(x.k)}"${x.k===paSel?' selected':''}>${esc(x.label)} (${esc(PA_KINDS[x.kind])})</option>`).join('')}</select></label>`;
+ if(paPt<0||paPt>=ms.length)paPt=ms.length-1;
+ const idx=m=>{const [y,mm]=m.split('-').map(Number);return y*12+mm;};
+ const W=320,H=150,L=46,R=12,T=12,B=24,pw=W-L-R,ph=H-T-B;
+ const vals=ms.map(m=>s.vals[m]);let lo=Math.min(...vals),hi=Math.max(...vals);
+ if(hi-lo<0.005){lo-=1;hi+=1;}const pd=(hi-lo)*0.1;lo-=pd;hi+=pd;
+ const i0=idx(ms[0]),span=Math.max(1,idx(ms[ms.length-1])-i0);
+ const X=m=>ms.length===1?L+pw/2:L+(idx(m)-i0)/span*pw,Y=v=>T+(hi-v)/(hi-lo)*ph;
+ const nf=new Intl.NumberFormat('fr-FR',{maximumFractionDigits:0});
+ let g='';
+ [lo+pd,(lo+hi)/2,hi-pd].forEach(v=>{g+=`<line x1="${L}" x2="${W-R}" y1="${Y(v)}" y2="${Y(v)}" style="stroke:var(--line)" stroke-width="1"/><text x="${L-6}" y="${Y(v)+3}" text-anchor="end" font-size="10" style="fill:var(--mut)">${nf.format(v)}</text>`;});
+ const pts=ms.map(m=>X(m)+','+Y(s.vals[m])).join(' ');
+ g+=`<polyline points="${pts}" fill="none" style="stroke:var(--pri)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
+ const labIdx=[...new Set([0,1,2,3,4].map(i=>Math.round(i*(ms.length-1)/4)))];
+ labIdx.forEach(i=>{const m=ms[i],a=i===0&&ms.length>1?'start':i===ms.length-1&&ms.length>1?'end':'middle';g+=`<text x="${X(m)}" y="${H-6}" text-anchor="${a}" font-size="10" style="fill:var(--mut)">${esc(paShort(m))}</text>`;});
+ ms.forEach((m,i)=>{
+  const on=i===paPt;
+  g+=`<circle cx="${X(m)}" cy="${Y(s.vals[m])}" r="${on?5.5:4}" style="fill:var(--pri);stroke:var(--card)" stroke-width="2"/><circle cx="${X(m)}" cy="${Y(s.vals[m])}" r="14" style="fill:transparent;cursor:pointer;pointer-events:all" data-a="paipt" data-i="${i}"/>`;
+ });
+ const cur=ms[paPt],v=s.vals[cur],pv=paPt>0?s.vals[ms[paPt-1]]:undefined;
+ let dl='';if(pv!==undefined){const d=paR2(v-pv);dl=Math.abs(d)<0.005?' · inchangé':' · '+(d>0?'+':'−')+paFmt(Math.abs(d))+' € ('+(pv?(d>0?'+':'−')+Math.abs(d/pv*100).toFixed(1).replace('.',',')+' %':'—')+') par rapport au mois précédent';}
+ let h=sel+`<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Évolution de ${esc(s.label)}">${g}</svg><p style="margin:6px 0 4px"><b>${esc(monthLabel(cur))}</b> : ${paFmt(v)} €<span class="s">${esc(dl)}</span></p><p class="s" style="margin:0">Touche un point pour lire sa valeur.</p>`;
+ const line=S.paie.lines.find(x=>x.id===s.k),notes={};
+ if(line&&line.hist)line.hist.forEach(e=>{if(e.note)notes[e.from]=e.note;});
+ h+=`<details class="fold" data-fold="paie-hist"${foldOpen('paie-hist',false)?' open':''}><summary>Historique de la ligne</summary>`;
+ h+=ms.slice().reverse().map(m=>{const i=ms.indexOf(m),pv2=i>0?s.vals[ms[i-1]]:undefined,d=pv2===undefined?null:paR2(s.vals[m]-pv2);
+  return `<div class="row"><div class="m"><div class="l">${esc(monthLabel(m))}</div>${notes[m]?`<div class="s">${esc(notes[m])}</div>`:''}</div><div class="a">${paFmt(s.vals[m])} €${d!==null&&Math.abs(d)>=0.005?`<div class="s">${d>0?'+':'−'}${paFmt(Math.abs(d))}</div>`:''}</div></div>`;}).join('');
+ return h+'</details>';
+}
+function paSlipsHTML(){
+ const ms=paSlipMonths();
+ if(!ms.length)return '<p class="mut">Aucune fiche validée.</p>';
+ return ms.slice().reverse().map(m=>{const rows=S.paie.slips[m].rows,tot=rows.find(r=>r.kind==='tot');return `<div class="row" data-a="paislip" data-m="${m}"><div class="m"><div class="l">${esc(monthLabel(m))}</div><div class="s">${rows.length} ligne${rows.length>1?'s':''}</div></div>${tot?`<div class="a">${paFmt(tot.amount)}<div class="s">${esc(tot.label)}</div></div>`:''}</div>`;}).join('');
+}
+function paModelHTML(){
+ const L=S.paie.lines,now=monthOf(today());
+ const rows=L.map(l=>`<div class="row" data-a="paiedit" data-id="${esc(l.id)}"><div class="m"><div class="l">${esc(l.label)}</div><div class="s">${esc(PA_KINDS[l.kind])} · depuis ${esc(paShort(l.start))}${l.end?' · jusqu\'à '+esc(paShort(l.end)):''}</div></div><div class="a">${paFmt(paAmt(l,now))}</div></div>`).join('')||'<p class="mut">Aucune ligne. Ajoute les lignes de ton bulletin (traitement de base, indemnités, cotisations, impôt, brut, net à payer…) : elles se répéteront chaque mois jusqu\'à ce que tu en changes le montant.</p>';
+ return rows+'<div style="margin-top:10px"><button class="primary" data-a="paiaddline">Ajouter une ligne</button></div>';
+}
+function paieHTML(){
+ return `<div class="mnav"><button data-a="paieback" aria-label="Retour">‹</button><b>Bulletin de paye</b><span style="width:44px"></span></div>
+ <p class="s" style="margin-top:0">Suivi seulement : cette page ne modifie aucun compte, solde ni budget.</p>
+ ${paDueHTML()}
+ ${foldCard('paie-evo','Évolution (tableau)',paTableHTML(),true)}
+ ${foldCard('paie-crb','Évolution (courbe)',paChartHTML(),true)}
+ ${foldCard('paie-fiches','Fiches validées',paSlipsHTML(),false)}
+ ${foldCard('paie-mod','Mon modèle de bulletin',paModelHTML(),!S.paie.lines.length)}`;
+}
+
+/* --- fenêtres --- */
+function paXRow(r){
+ return `<div class="pa-x" data-k="${esc(r.k||'')}" data-l="${esc(r.label||'')}"><input class="pa-xl" placeholder="Libellé (ex. Prime exceptionnelle)" value="${esc(r.label||'')}"><div class="pk2"><select class="pa-xk">${Object.keys(PA_KINDS).map(k=>`<option value="${k}"${(r.kind||'gain')===k?' selected':''}>${PA_KINDS[k]}</option>`).join('')}</select><input class="pa-xa" inputmode="decimal" placeholder="Montant" value="${r.amount===undefined||r.amount===''?'':esc(paNum(r.amount))}"></div></div>`;
+}
+function openSlip(ym){
+ const old=S.paie.slips[ym],isNew=!old;
+ const ids=new Set(S.paie.lines.map(l=>l.id));
+ let rows=old?old.rows.map(r=>Object.assign({},r)):paRowsFromModel(ym);
+ const model=[],extra=rows.filter(r=>!ids.has(r.k));
+ S.paie.lines.forEach(l=>{
+  if(old){const r=rows.find(x=>x.k===l.id);if(r)model.push(r);else if(paActive(l,ym))model.push({k:l.id,label:l.label,kind:l.kind,amount:''});}
+  else if(paActive(l,ym))model.push(rows.find(x=>x.k===l.id));
+ });
+ txCtx={pm:ym};
+ openModal(`<h3>Bulletin de ${esc(monthLabel(ym))}</h3>
+ <p class="s" style="margin-top:-6px">${isNew?'Montants du modèle : corrige ce qui a changé. ':''}Laisse un champ vide si la ligne n'existe pas ce mois-ci.</p>
+ ${model.map(r=>`<label>${esc(r.label)} <span class="s">· ${esc(PA_KINDS[r.kind])}</span><input class="pa-a" data-k="${esc(r.k)}" inputmode="decimal" value="${r.amount===''?'':esc(paNum(r.amount))}"></label>`).join('')}
+ <b style="display:block;margin:6px 0">Lignes ponctuelles (prime…)</b>
+ <div id="pa_x">${extra.map(paXRow).join('')}</div>
+ <button class="ghost" style="width:100%;margin-bottom:10px" data-a="paaddx">+ Ajouter une ligne ponctuelle</button>
+ <div class="btns"><button class="ghost" data-a="closem">Annuler</button><button class="primary" data-a="saveslip">${isNew?'Valider':'Enregistrer'}</button></div>
+ ${isNew?'':'<div style="margin-top:10px"><button class="danger" style="width:100%" data-a="delslip">Supprimer cette fiche</button></div>'}`);
+}
+function saveSlip(){
+ const ym=txCtx.pm,rows=[];
+ const byId=Object.fromEntries(S.paie.lines.map(l=>[l.id,l]));
+ for(const el of document.querySelectorAll('#modal .pa-a')){
+  const t=el.value.trim();if(t==='')continue;
+  const a=parseAmount(t);if(isNaN(a)){alert('Montant invalide.');return;}
+  const l=byId[el.dataset.k];if(!l)continue;
+  rows.push({k:l.id,label:l.label,kind:l.kind,amount:paR2(Math.abs(a))});
+ }
+ const seen=new Set(rows.map(r=>r.k));
+ for(const el of document.querySelectorAll('#modal .pa-x')){
+  const label=el.querySelector('.pa-xl').value.trim(),t=el.querySelector('.pa-xa').value.trim();
+  if(!label&&!t)continue;
+  if(!label){alert('Libellé manquant sur une ligne ponctuelle.');return;}
+  const a=parseAmount(t);if(isNaN(a)){alert('Montant invalide sur « '+label+' ».');return;}
+  const k=el.dataset.k&&el.dataset.l===label?el.dataset.k:'x:'+norm(label);
+  if(seen.has(k)){alert('Deux lignes portent le même libellé : « '+label+' ».');return;}
+  seen.add(k);
+  rows.push({k,label,kind:el.querySelector('.pa-xk').value,amount:paR2(Math.abs(a))});
+ }
+ if(!rows.length){alert('Aucun montant saisi.');return;}
+ S.paie.slips[ym]={rows};S.paie.skips=S.paie.skips.filter(m=>m!==ym);
+ save();closeModal();render();
+}
+function openPaLine(id){
+ const l=id?S.paie.lines.find(x=>x.id===id):null;
+ const d=l||{label:'',kind:'gain',start:monthOf(today()),end:''};
+ const cur=l?paAmt(l,monthOf(today())):'';
+ txCtx={plid:l?l.id:null,pcur:cur};
+ openModal(`<h3>${l?'Modifier la ligne':'Nouvelle ligne du bulletin'}</h3>
+ <label>Libellé (comme sur ton bulletin)<input id="pl_lab" value="${esc(d.label)}"></label>
+ <label>Type<select id="pl_kind">${Object.keys(PA_KINDS).map(k=>`<option value="${k}"${d.kind===k?' selected':''}>${PA_KINDS[k]}</option>`).join('')}</select></label>
+ <label>Montant mensuel (€), tel qu'imprimé sur le bulletin<input id="pl_amt" inputmode="decimal" value="${l?esc(paNum(cur)):''}"></label>
+ ${l?`<div id="pl_fromw" style="display:none"><label>Nouveau montant à partir du mois de${paPick('pl_from',monthOf(today()))}</label><label>Motif (facultatif : échelon, grade…)<input id="pl_note" placeholder="ex. Passage à l'échelon 5"></label><p class="s" style="margin-top:-6px">Les fiches déjà validées ne changent pas ; les mois pas encore validés prennent le nouveau montant.</p></div>`:''}
+ <label>Première fiche${paPick('pl_start',d.start)}</label>
+ <label>Dernière fiche (facultatif)${paPick('pl_end',d.end,true)}</label>
+ <div class="btns"><button class="ghost" data-a="closem">Annuler</button><button class="primary" data-a="savepaline">Enregistrer</button></div>
+ ${l?'<div style="margin-top:10px"><button class="danger" style="width:100%" data-a="delpaline">Supprimer cette ligne</button></div>':''}`);
+}
+function savePaLine(){
+ const label=$('pl_lab').value.trim();if(!label){alert('Libellé manquant.');return;}
+ const a=parseAmount($('pl_amt').value);if(isNaN(a)){alert('Montant invalide.');return;}
+ const amt=paR2(Math.abs(a)),start=paPickVal('pl_start'),end=paPickVal('pl_end');
+ if(!start){alert('Mois de la première fiche manquant.');return;}
+ if(end&&end<start){alert('La dernière fiche ne peut pas précéder la première.');return;}
+ const old=txCtx.plid?S.paie.lines.find(x=>x.id===txCtx.plid):null;
+ const l={id:txCtx.plid||uid(),label,kind:$('pl_kind').value,amount:amt,start,end};
+ if(old&&old.hist)l.hist=old.hist;
+ if(old&&Math.abs(amt-txCtx.pcur)>0.004){
+  const from=paPickVal('pl_from');if(!from){alert("Indique le mois à partir duquel le nouveau montant s'applique.");return;}
+  const note=$('pl_note').value.trim();
+  l.hist=paChange(old.hist,txCtx.pcur,from,amt,note);
+  l.amount=paAmt(l,monthOf(today()));
+ }
+ if(old)S.paie.lines[S.paie.lines.findIndex(x=>x.id===old.id)]=l;else S.paie.lines.push(l);
+ save();closeModal();render();
+}
+const VIEWS={home:homeHTML,tx:linesHTML,rec:recHTML,imp:impHTML,set:setHTML,paie:paieHTML};
 function render(){
  $('app').innerHTML=bkBannerHTML()+VIEWS[view]();   // le rappel de sauvegarde est commun à toutes les vues
- document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.v===view));
+ document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.v===(view==='paie'?'rec':view)));
 }
 
 /* ---------- modales ---------- */
@@ -1186,6 +1427,20 @@ function act(a,ds){
  else if(a==='newrule')openRule(null);
  else if(a==='editrule')openRule(ds.kw);
  else if(a==='allacc'){S.shown=ds.v==='1'?S.accounts.map(x=>x.id):[];save(true);pruneSel();render();}
+ else if(a==='openpaie'){sel=null;view='paie';window.scrollTo(0,0);render();}
+ else if(a==='paieback'){view='rec';window.scrollTo(0,0);render();}
+ else if(a==='paiopen'||a==='paislip')openSlip(ds.m);
+ else if(a==='paiskip'){if(!S.paie.skips.includes(ds.m))S.paie.skips.push(ds.m);save();render();}
+ else if(a==='paiall'){const due=paDue();if(due.length&&confirm('Valider '+due.length+' mois avec les montants du modèle ? Tu pourras corriger chaque fiche ensuite.')){due.forEach(m=>{S.paie.slips[m]={rows:paRowsFromModel(m)};});save();render();}}
+ else if(a==='pawin'){paWin=Math.max(0,paWin+Number(ds.d));render();}
+ else if(a==='paipt'){paPt=Number(ds.i);render();}
+ else if(a==='paiaddline')openPaLine(null);
+ else if(a==='paiedit')openPaLine(ds.id);
+ else if(a==='savepaline')savePaLine();
+ else if(a==='delpaline'){if(confirm('Supprimer cette ligne du modèle ? Les fiches déjà validées sont conservées.')){S.paie.lines=S.paie.lines.filter(x=>x.id!==txCtx.plid);save();closeModal();render();}}
+ else if(a==='paaddx'){$('pa_x').insertAdjacentHTML('beforeend',paXRow({kind:'gain'}));}
+ else if(a==='saveslip')saveSlip();
+ else if(a==='delslip'){if(confirm('Supprimer la fiche de '+monthLabel(txCtx.pm)+' ?')){delete S.paie.slips[txCtx.pm];save();closeModal();render();}}
  else if(a==='editpay')openPay(ds.m);
  else if(a==='savepay')savePay();
  else if(a==='resetpay'){if(S.payDates)delete S.payDates[txCtx.pm];save();closeModal();render();}
@@ -1200,7 +1455,7 @@ function act(a,ds){
  else if(a==='wipe'){if(confirm('Effacer toutes les données ?')&&confirm('Dernière confirmation : action irréversible.')){S=defaultState();save();render();}}
 }
 document.addEventListener('click',e=>{const el=e.target.closest('[data-a]');if(el){if(el.tagName==='LABEL')return;act(el.dataset.a,el.dataset);}});
-document.addEventListener('input',e=>{if(e.target.id==='s'){search=e.target.value;pruneSel();refreshList();}else if(e.target.id==='r_amt'){const w=$('r_fromw');if(w)w.style.display='block';fromInfo();}else if(e.target.id==='r_from')fromInfo();});
+document.addEventListener('input',e=>{if(e.target.id==='s'){search=e.target.value;pruneSel();refreshList();}else if(e.target.id==='r_amt'){const w=$('r_fromw');if(w)w.style.display='block';fromInfo();}else if(e.target.id==='r_from')fromInfo();else if(e.target.id==='pl_amt'){const w=$('pl_fromw');if(w)w.style.display='block';}});
 document.addEventListener('change',e=>{
  const t=e.target;
  if(t.dataset&&t.dataset.catsel){$(t.dataset.catsel).innerHTML=subOptions(t.value,'');}
@@ -1209,6 +1464,7 @@ document.addEventListener('change',e=>{
   if(t.value==='rec'&&c.value!=='Revenus'){c.value='Revenus';$(p+'sub').innerHTML=subOptions('Revenus','');}
   if(t.value==='dep'&&c.value==='Revenus'){c.value='Divers';$(p+'sub').innerHTML=subOptions('Divers','Non classé');}
  }
+ else if(t.id==='pa_sel'){paSel=t.value;paPt=-1;render();}
  else if(t.id==='r_freq'){$('r_dayw').style.display=t.value==='monthly'?'block':'none';$('r_everyw').style.display=(t.value==='weekly'||t.value==='days')?'block':'none';}
  else if(t.id==='csv'&&t.files[0]){const rd=new FileReader();rd.onload=()=>{let txt=rd.result;onFile(txt);};rd.readAsText(t.files[0],'utf-8');}
  else if(t.id==='jsonfile'&&t.files[0]){
@@ -1240,7 +1496,7 @@ const SYNC_KEY='sb_publishable_rHeMIa4CSjCjZXpAI-0tTQ_QC1O06Ng';   // clé publi
 const SYNC_APP='suivi';
 const SYNC_SESSION_KEY='compte-sync-session',SYNC_META_KEY='compte-sync-meta',SYNC_CLE_KEY='compte-sync-cle',SYNC_LOST_KEY='compte-sync-conflits';
 const SYNC_POLL_MS=5000,SYNC_PBKDF2=600000,SYNC_MIN_PHRASE=12;
-const SYNC_META_FIELDS=['v','accounts','rec','plans','rules','budgets','payDates','csvMaps','skips','lastExport','bk'];
+const SYNC_META_FIELDS=['v','accounts','rec','plans','rules','budgets','payDates','csvMaps','skips','paie','lastExport','bk'];
 let syncSession=null,syncKey=null,syncKeyMode=null,syncMeta={since:null,synced:{},done:false};
 let syncState={status:'start',last:null,msg:''},syncBusy=false,syncAgain=false,syncTimer=null,syncRefreshing=null,syncUiPending=false,syncCache={raw:undefined,out:null},syncMetaText='';
 const SYNC_ENC=new TextEncoder(),SYNC_DEC=new TextDecoder();

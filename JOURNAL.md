@@ -5,7 +5,7 @@ Les entrées les plus récentes sont en haut. À chaque intervention, ajouter un
 
 ## État actuel (2026-11-19)
 
-- **Version 35** (audit des débordements d'écran : grilles de l'Accueil, bannière Hors ligne ; nouvelle suite `tests/test_debordements.py`, 10 suites, toutes vertes) ; version 34 (champs date iPhone) ; version 33 : patrimoine net (carte repliée sur l'Accueil), types « Épargne bloquée » et « Bien ». 9 suites de tests, toutes vertes (`tests/test_patrimoine.py` : 37 vérifications). Points ouverts : voir l'entrée du 2026-11-19.
+- **Version 36** : module **Bulletin de paye** (suivi de l'évolution de chaque ligne du bulletin, à part des comptes ; nouvelle suite `tests/test_paie.py`, 11 suites, toutes vertes). **À valider sur iPhone et iPad** : la vue (page ouverte depuis Récurrent), les sélecteurs de mois (deux listes), le tableau à trois mois. Version 35 (audit des débordements d'écran : grilles de l'Accueil, bannière Hors ligne ; nouvelle suite `tests/test_debordements.py`, 10 suites, toutes vertes) ; version 34 (champs date iPhone) ; version 33 : patrimoine net (carte repliée sur l'Accueil), types « Épargne bloquée » et « Bien ». 9 suites de tests, toutes vertes (`tests/test_patrimoine.py` : 37 vérifications). Points ouverts : voir l'entrée du 2026-11-19.
 
 ### Rappel de l'état au 2026-11-16
 
@@ -21,6 +21,16 @@ Les entrées les plus récentes sont en haut. À chaque intervention, ajouter un
 - Service worker en version `compte-v17`.
 - Reste à faire : tester l'import CSV avec l'export réel de la banque (point en attente depuis la première version).
 - Aucune donnée réelle n'est stockée dans le dépôt.
+
+## 2026-11-19 — Module Bulletin de paye (version 36)
+
+- Demande : suivre l'évolution de la paie, ligne par ligne. Idée de départ (un groupe « Bulletin de paye » et un compte par ligne, avec des virements pour le solde) **écartée** : une ligne de bulletin est un flux, pas un endroit où il y a de l'argent ; il aurait fallu 15 à 25 virements par mois, et les faux comptes auraient faussé patrimoine, soldes cochés et budget du jour.
+- Choix de l'utilisateur : un module séparé calqué sur les récurrences (le brut se répète chaque mois jusqu'à changement de montant) ; saisie de toutes les lignes à la main (brut, retenues, net à payer…) ; but = suivre l'évolution ; tableau **et** courbes ; lignes ponctuelles possibles (primes) ; changements de grade / d'échelon.
+- Réalisé : `S.paie` = `lines` (modèle : libellé, type gain / retenue / total-information, montant, mois de début et de fin facultatif, historique de montants datés `hist` avec motif facultatif), `slips` (fiches validées par mois : lignes figées), `skips` (mois ignorés). Page ouverte depuis une carte de Récurrent (vue `paie`, onglet Récurrent resté actif) : « À valider » (Valider, Ignorer, « Tout valider avec les montants du modèle » pour rattraper des mois), tableau (3 mois à la fois, flèches pour reculer ; montant différent de la fiche précédente en gras et en couleur), courbe d'une ligne au choix (touche un point pour lire sa valeur, écart avec le mois précédent), historique de la ligne avec les motifs, fiches validées modifiables ou supprimables, modèle de lignes. Champ `paie` ajouté aux champs synchronisés (ligne `meta`).
+- Choix faits sans question (modifiables) : un changement de montant du modèle ne touche **pas** les fiches déjà validées (c'est du réel) ; les mois pas encore validés prennent le nouveau montant ; une ligne supprimée du modèle reste dans les fiches ; la fiche d'un mois ne se propose qu'à partir du début du mois ; les montants se saisissent comme sur le bulletin (valeur absolue, le type donne le sens) ; sélecteurs de mois en deux listes (pas de champ `month` de Safari).
+- Aucun effet sur les comptes, soldes, lignes, récurrences, budget du jour, patrimoine (vérifié par les tests).
+- Tests : `tests/test_paie.py` (86 vérifications : données, parcours complet, contrôles de formulaire, synchronisation chiffrée) ; `tests/test_debordements.py` étendue à la vue et aux 4 fenêtres du module (246 vérifications, 390 à 320 px, montants à six chiffres).
+- Pas fait (possibles ensuite) : contrôle d'écart brut − retenues = net, ordre des lignes modifiable, export tableur de l'évolution, saisie depuis un bulletin PDF.
 
 ## 2026-11-19 — Audit des débordements d'écran (version 35)
 
