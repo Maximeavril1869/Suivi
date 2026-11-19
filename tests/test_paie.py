@@ -420,6 +420,42 @@ def test_ligne_dans_fiches_existantes(browser):
     check('aucune erreur JavaScript', not pg.errors, pg.errors)
 
 
+def test_net_a_payer(browser):
+    print('Net à payer affiché sur chaque fiche')
+    pg = device(browser, FauxSupabase())
+    depart(pg)
+    mm = {k: mois(pg, k) for k in range(-1, 1)}
+
+    def fiche(brut, imposable, net, libelle_net='Net à payer'):
+        return {'rows': [{'k': 'a', 'label': 'Brut', 'kind': 'tot', 'amount': brut}, {'k': 'b', 'label': 'Net imposable', 'kind': 'tot', 'amount': imposable},
+                         {'k': 'c', 'label': libelle_net, 'kind': 'tot', 'amount': net}]}
+    paie = {'lines': [], 'slips': {mm[-1]: fiche(2500, 2100, 1987.65), mm[0]: fiche(2510, 2110, 1999.99)}, 'skips': []}
+    pg.evaluate("([k, p]) => { const s = defaultState(); s.paie = p; localStorage.setItem(k, JSON.stringify(s)); }", [T.KEY, paie])
+    pg.reload()
+    ouvre_paie(pg)
+    pg.evaluate("() => { FOLD['paie-fiches'] = true; render(); }")
+    t = norm(pg.inner_text('[data-a=paislip][data-m="%s"]' % mm[0]))
+    check('la fiche affiche son net à payer (pas le brut ni le net imposable)', '1 999,99 €' in t and 'Net à payer' in t and '2 510' not in t and '2 110' not in t, t)
+    t = norm(pg.inner_text('[data-a=paislip][data-m="%s"]' % mm[-1]))
+    check('chaque fiche a son propre net', '1 987,65 €' in t, t)
+    check('aucun message d\'aide quand le net existe', 'nomme une ligne' not in pg.inner_text('#app'))
+    pg.evaluate("(m) => openSlip(m)", mm[0])
+    check('fiche ouverte : net à payer enregistré rappelé en haut', 'Net à payer enregistré : 1 999,99 €' in norm(pg.inner_text('#modal')))
+    pg.click('[data-a=closem]')
+    # variantes de libellé et de casse, plusieurs lignes « net à payer » : la dernière
+    pg.evaluate("(m) => { S.paie.slips[m] = { rows: [{ k: 'a', label: 'NET A PAYER AVANT IMPOT', kind: 'tot', amount: 2000 }, { k: 'b', label: 'Net à payer après impôt', kind: 'tot', amount: 1900 }] }; render(); }", mm[0])
+    check('plusieurs « net à payer » : la dernière ligne l\'emporte', '1 900,00 €' in norm(pg.inner_text('[data-a=paislip][data-m="%s"]' % mm[0])))
+    pg.evaluate("(m) => { S.paie.slips[m] = { rows: [{ k: 'a', label: 'Brut', kind: 'tot', amount: 2500 }, { k: 'b', label: 'net', kind: 'tot', amount: 1800 }] }; render(); }", mm[0])
+    check('à défaut, une ligne de type total nommée « net »', '1 800,00 €' in norm(pg.inner_text('[data-a=paislip][data-m="%s"]' % mm[0])))
+    pg.evaluate("(m) => { S.paie.slips[m] = { rows: [{ k: 'a', label: 'Brut', kind: 'tot', amount: 2500 }, { k: 'b', label: 'Retraite', kind: 'ret', amount: 300 }] }; render(); }", mm[0])
+    t = norm(pg.inner_text('[data-a=paislip][data-m="%s"]' % mm[0]))
+    check('sans ligne « net à payer » : tiret (jamais le brut à la place), pas de montant inventé', '—' in t and '2 500' not in t, t)
+    check('fiche sans net, mais une autre en a : pas de message d\'aide', 'nomme une ligne' not in pg.inner_text('#app'))
+    pg.evaluate("(m) => { S.paie.slips[m] = { rows: [{ k: 'a', label: 'Brut', kind: 'tot', amount: 2500 }] }; S.paie.slips['%s'] = { rows: [{ k: 'a', label: 'Brut', kind: 'tot', amount: 2400 }] }; render(); }" % mm[-1], mm[0])
+    check('aucune fiche avec net : message d\'aide pour nommer la ligne', 'Pour voir le net à payer ici, nomme une ligne « Net à payer »' in norm(pg.inner_text('#app')))
+    check('aucune erreur JavaScript', not pg.errors, pg.errors)
+
+
 def test_validation_ligne(browser):
     print('Formulaire d\'une ligne : contrôles')
     pg = device(browser, FauxSupabase())
@@ -477,6 +513,7 @@ def main():
         test_propagation(browser)
         test_selection_suppression(browser)
         test_ligne_dans_fiches_existantes(browser)
+        test_net_a_payer(browser)
         test_validation_ligne(browser)
         test_sync(browser)
         browser.close()

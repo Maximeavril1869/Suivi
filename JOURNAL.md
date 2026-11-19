@@ -5,7 +5,7 @@ Les entrées les plus récentes sont en haut. À chaque intervention, ajouter un
 
 ## État actuel (2026-11-19)
 
-- **Version 39** : Bulletin de paye, une ligne créée dans le modèle est proposée aux fiches déjà validées (elle ne reste plus vide) ; 133 vérifications sur le module. **Version 38** : Bulletin de paye, sélection de fiches pour les supprimer (bouton « Sélectionner » dans Fiches validées) ; 122 vérifications sur le module, 258 d'affichage. **Version 37** : Bulletin de paye, **un changement de montant vaut pour les mois suivants** (comme les récurrences) ; 252 vérifications d'affichage et 106 sur le module. **Version 36** : module **Bulletin de paye** (suivi de l'évolution de chaque ligne du bulletin, à part des comptes ; nouvelle suite `tests/test_paie.py`, 11 suites, toutes vertes). **À valider sur iPhone et iPad** : la vue (page ouverte depuis Récurrent), les sélecteurs de mois (deux listes), le tableau à trois mois. Version 35 (audit des débordements d'écran : grilles de l'Accueil, bannière Hors ligne ; nouvelle suite `tests/test_debordements.py`, 10 suites, toutes vertes) ; version 34 (champs date iPhone) ; version 33 : patrimoine net (carte repliée sur l'Accueil), types « Épargne bloquée » et « Bien ». 9 suites de tests, toutes vertes (`tests/test_patrimoine.py` : 37 vérifications). Points ouverts : voir l'entrée du 2026-11-19.
+- **Version 40** : Bulletin de paye, le net à payer s'affiche sur chaque fiche validée (et en haut de la fiche ouverte) ; 143 vérifications sur le module. **Version 39** : Bulletin de paye, une ligne créée dans le modèle est proposée aux fiches déjà validées (elle ne reste plus vide) ; 133 vérifications sur le module. **Version 38** : Bulletin de paye, sélection de fiches pour les supprimer (bouton « Sélectionner » dans Fiches validées) ; 122 vérifications sur le module, 258 d'affichage. **Version 37** : Bulletin de paye, **un changement de montant vaut pour les mois suivants** (comme les récurrences) ; 252 vérifications d'affichage et 106 sur le module. **Version 36** : module **Bulletin de paye** (suivi de l'évolution de chaque ligne du bulletin, à part des comptes ; nouvelle suite `tests/test_paie.py`, 11 suites, toutes vertes). **À valider sur iPhone et iPad** : la vue (page ouverte depuis Récurrent), les sélecteurs de mois (deux listes), le tableau à trois mois. Version 35 (audit des débordements d'écran : grilles de l'Accueil, bannière Hors ligne ; nouvelle suite `tests/test_debordements.py`, 10 suites, toutes vertes) ; version 34 (champs date iPhone) ; version 33 : patrimoine net (carte repliée sur l'Accueil), types « Épargne bloquée » et « Bien ». 9 suites de tests, toutes vertes (`tests/test_patrimoine.py` : 37 vérifications). Points ouverts : voir l'entrée du 2026-11-19.
 
 ### Rappel de l'état au 2026-11-16
 
@@ -21,6 +21,13 @@ Les entrées les plus récentes sont en haut. À chaque intervention, ajouter un
 - Service worker en version `compte-v17`.
 - Reste à faire : tester l'import CSV avec l'export réel de la banque (point en attente depuis la première version).
 - Aucune donnée réelle n'est stockée dans le dépôt.
+
+## 2026-11-19 — Bulletin de paye : net à payer sur chaque fiche (version 40)
+
+- Demande : afficher le montant net à payer sur chaque fiche.
+- Réalisé : `paNetRow` retrouve la ligne du net : la **dernière** ligne dont le libellé contient « net à payer » (casse, accents et ponctuation ignorés), sinon la dernière ligne de type total dont le libellé contient « net ». Elle s'affiche en gras à droite de chaque fiche de « Fiches validées » (étiquette « Net à payer ») et en haut de la fiche ouverte. Sans ligne trouvée : un tiret (jamais un autre total à la place) ; si aucune fiche n'a de net, un message invite à nommer une ligne « Net à payer » dans le modèle.
+- Choix fait sans question : plusieurs lignes « net à payer » (avant et après impôt, par exemple) → la dernière de la fiche l'emporte.
+- Tests : `test_net_a_payer` (10 vérifications) dans `tests/test_paie.py`.
 
 ## 2026-11-19 — Bulletin de paye : une nouvelle ligne du modèle n'est plus vide (version 39)
 

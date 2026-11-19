@@ -116,7 +116,7 @@ const KEY='compte-salaire-v1';
 /* Épargne bloquée et Bien : comptent dans le patrimoine net seulement. Jamais dans le reste à vivre, le budget du jour, les soldes des comptes cochés ni « Sortir du découvert », et on n'y saisit pas de lignes : on met à jour leur valeur (solde de référence). */
 const ILLIQ={bloque:1,bien:1};
 const isLiquid=a=>!ILLIQ[a.type];
-const APP_VERSION='39';   // identique au numéro de la constante V de sw.js (compte-v39) : à incrémenter ensemble à chaque livraison
+const APP_VERSION='40';   // identique au numéro de la constante V de sw.js (compte-v40) : à incrémenter ensemble à chaque livraison
 const CATS={
  'Revenus':['Salaire','Primes','Remboursements','Intérêts','Autres revenus'],
  'Logement':['Loyer / crédit','Charges','Énergie','Internet / téléphone','Assurance habitation','Travaux / mobilier'],
@@ -882,6 +882,11 @@ function paSeries(){
  arr.forEach((s,i)=>{const o=order.indexOf(s.k);s.i=o>=0?o:1000+i;});
  return arr.sort((a,b)=>PA_RANK[a.kind]-PA_RANK[b.kind]||a.i-b.i);
 }
+/* Net à payer d'une fiche : la dernière ligne dont le libellé contient « net à payer » (casse et accents ignorés), sinon la dernière ligne de type total dont le libellé contient « net » ; sinon aucune. */
+function paNetRow(rows){
+ const ok=re=>rows.filter(r=>re.test(norm(r.label))).pop();
+ return ok(/NET A PAYER/)||rows.filter(r=>r.kind==='tot').filter(r=>/\bNET\b/.test(norm(r.label))).pop()||null;
+}
 function paChange(hist,cur,from,amt,note){
  const h=(hist&&hist.length?hist:[{from:'0000-00',amount:cur}]).filter(e=>e.from<from);
  if(!h.length)h.push({from:'0000-00',amount:cur});
@@ -980,13 +985,13 @@ function paSlipsHTML(){
  const ms=paSlipMonths();
  if(!ms.length)return '<p class="mut">Aucune fiche validée.</p>';
  const sm=paSelM;
- let h='';
+ let h=ms.some(m=>paNetRow(S.paie.slips[m].rows))?'':'<p class="s" style="margin-top:0">Pour voir le net à payer ici, nomme une ligne « Net à payer » dans le modèle.</p>';
  if(sm){
   h+=`<p class="s" style="margin-top:0">Touche les fiches à supprimer. Un mois supprimé revient dans « À valider » tant que le modèle le couvre.</p><div class="btns" style="margin-bottom:6px"><button class="ghost small" data-a="paiselall">${sm.size===ms.length?'Tout désélectionner':'Tout sélectionner'}</button><button class="ghost small" data-a="paiselend">Annuler</button><button class="danger small" data-a="paidel" ${sm.size?'':'disabled'}>Supprimer (${sm.size})</button></div>`;
  }else h+=`<div style="text-align:right;margin-bottom:4px"><button class="ghost small" data-a="paisel">Sélectionner</button></div>`;
  return h+ms.slice().reverse().map(m=>{
-  const rows=S.paie.slips[m].rows,tot=rows.find(r=>r.kind==='tot'),on=sm&&sm.has(m);
-  return `<div class="row" data-a="${sm?'paitog':'paislip'}" data-m="${m}">${sm?`<div style="font-size:20px;width:28px;flex:none" aria-hidden="true">${on?'☑':'☐'}</div>`:''}<div class="m"><div class="l">${esc(monthLabel(m))}</div><div class="s">${rows.length} ligne${rows.length>1?'s':''}</div></div>${tot?`<div class="a">${paFmt(tot.amount)}<div class="s">${esc(tot.label)}</div></div>`:''}</div>`;}).join('');
+  const rows=S.paie.slips[m].rows,tot=paNetRow(rows),on=sm&&sm.has(m);
+  return `<div class="row" data-a="${sm?'paitog':'paislip'}" data-m="${m}">${sm?`<div style="font-size:20px;width:28px;flex:none" aria-hidden="true">${on?'☑':'☐'}</div>`:''}<div class="m"><div class="l">${esc(monthLabel(m))}</div><div class="s">${rows.length} ligne${rows.length>1?'s':''}</div></div>${tot?`<div class="a"><b>${paFmt(tot.amount)} €</b><div class="s">Net à payer</div></div>`:'<div class="a mut">—<div class="s">Net à payer</div></div>'}</div>`;}).join('');
 }
 function paModelHTML(){
  const L=S.paie.lines,now=monthOf(today());
@@ -1018,6 +1023,7 @@ function openSlip(ym,over){
  });
  txCtx={pm:ym};
  openModal(`<h3>Bulletin de ${esc(monthLabel(ym))}</h3>
+ ${!isNew&&paNetRow(old.rows)?`<p style="margin:-4px 0 8px"><b>Net à payer enregistré : ${paFmt(paNetRow(old.rows).amount)} €</b></p>`:''}
  <p class="s" style="margin-top:-6px">${isNew?'Montants du modèle : corrige ce qui a changé. ':''}Laisse un champ vide si la ligne n'existe pas ce mois-ci. Si tu changes un montant, l'app te demandera s'il vaut aussi pour les mois suivants.</p>
  ${model.map(r=>`<label>${esc(r.label)} <span class="s">· ${esc(PA_KINDS[r.kind])}</span><input class="pa-a" data-k="${esc(r.k)}" inputmode="decimal" value="${r.amount===''?'':esc(paNum(r.amount))}"></label>`).join('')}
  <b style="display:block;margin:6px 0">Lignes ponctuelles (prime…)</b>
