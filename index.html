@@ -116,7 +116,7 @@ const KEY='compte-salaire-v1';
 /* Épargne bloquée et Bien : comptent dans le patrimoine net seulement. Jamais dans le reste à vivre, le budget du jour, les soldes des comptes cochés ni « Sortir du découvert », et on n'y saisit pas de lignes : on met à jour leur valeur (solde de référence). */
 const ILLIQ={bloque:1,bien:1};
 const isLiquid=a=>!ILLIQ[a.type];
-const APP_VERSION='44';   // identique au numéro de la constante V de sw.js (compte-v44) : à incrémenter ensemble à chaque livraison
+const APP_VERSION='45';   // identique au numéro de la constante V de sw.js (compte-v45) : à incrémenter ensemble à chaque livraison
 const CATS={
  'Revenus':['Salaire','Primes','Remboursements','Intérêts','Autres revenus'],
  'Logement':['Loyer / crédit','Charges','Énergie','Internet / téléphone','Assurance habitation','Travaux / mobilier'],
@@ -995,13 +995,17 @@ function paModelHTML(){
  const rows=L.map(l=>`<div class="row" data-a="paiedit" data-id="${esc(l.id)}"><div class="m"><div class="l">${esc(l.label)}</div><div class="s">${esc(PA_KINDS[l.kind])} · depuis ${esc(paShort(l.start))}${l.end?' · jusqu\'à '+esc(paShort(l.end)):''}</div></div><div class="a">${paFmt(paAmt(l,now))}</div></div>`).join('')||'<p class="mut">Aucune ligne. Ajoute les lignes de ton bulletin (traitement de base, indemnités, cotisations, impôt, brut, net à payer…) : elles se répéteront chaque mois jusqu\'à ce que tu en changes le montant.</p>';
  return rows+'<div style="margin-top:10px"><button class="primary" data-a="paiaddline">Ajouter une ligne</button></div>';
 }
+function paSkipsHTML(){
+ const sk=S.paie.skips.slice().sort();if(!sk.length)return '';
+ return `<div style="margin-top:12px"><b>Mois ignorés</b><p class="s" style="margin-top:2px">Ces mois ne sont ni à valider ni validés. Remets-les dans « À valider » pour les saisir.</p>${sk.map(m=>`<div class="row"><div class="m"><div class="l">${esc(monthLabel(m))}</div></div><div class="a"><button class="ghost small" data-a="paiunskip" data-m="${m}">Remettre à valider</button></div></div>`).join('')}${sk.length>1?`<div style="margin-top:8px"><button class="ghost" style="width:100%" data-a="paiunskipall">Tout remettre à valider (${sk.length} mois)</button></div>`:''}</div>`;
+}
 function paieHTML(){
  return `<div class="mnav"><button data-a="paieback" aria-label="Retour">‹</button><b>Bulletin de paye</b><span style="width:44px"></span></div>
  <p class="s" style="margin-top:0">Suivi seulement : cette page ne modifie aucun compte, solde ni budget.</p>
  ${paDueHTML()}
  ${foldCard('paie-evo','Évolution (tableau)',paTableHTML(),true)}
  ${foldCard('paie-crb','Évolution (courbe)',paChartHTML(),true)}
- ${foldCard('paie-fiches','Fiches validées',paSlipsHTML(),false)}
+ ${foldCard('paie-fiches','Fiches validées',paSlipsHTML()+paSkipsHTML(),false)}
  ${foldCard('paie-mod','Mon modèle de bulletin',paModelHTML(),!S.paie.lines.length)}`;
 }
 
@@ -1488,6 +1492,8 @@ function act(a,ds){
  else if(a==='paiopen'||a==='paislip')openSlip(ds.m);
  else if(a==='paiskip'){if(!S.paie.skips.includes(ds.m))S.paie.skips.push(ds.m);save();render();}
  else if(a==='paiall'){const due=paDue();if(due.length&&confirm('Valider '+due.length+' mois avec les montants du modèle ? Tu pourras corriger chaque fiche ensuite.')){due.forEach(m=>{S.paie.slips[m]={rows:paRowsFromModel(m)};});save();render();}}
+ else if(a==='paiunskip'){S.paie.skips=S.paie.skips.filter(m=>m!==ds.m);save();render();}
+ else if(a==='paiunskipall'){S.paie.skips=[];save();render();}
  else if(a==='pawin'){paWin=Math.max(0,paWin+Number(ds.d));render();}
  else if(a==='paipt'){paPt=Number(ds.i);render();}
  else if(a==='paiaddline')openPaLine(null);

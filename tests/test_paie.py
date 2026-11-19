@@ -483,6 +483,25 @@ def test_validation_ligne(browser):
     check('aucune erreur JavaScript', not pg.errors, pg.errors)
 
 
+def test_mois_ignores(browser):
+    print('Mois ignorés : remise à valider')
+    pg = device(browser, FauxSupabase())
+    pg.on('dialog', lambda d: d.accept())
+    m0, m1, m2 = mois(pg, -2), mois(pg, -1), mois(pg, 0)
+    depart(pg, {'lines': [{'id': 'l1', 'label': 'Brut', 'kind': 'gain', 'amount': 100, 'start': m0, 'end': '', 'mode': 'fixed'}], 'slips': {}, 'skips': [m0, m1]})
+    ouvre_paie(pg)
+    pg.evaluate("() => { FOLD['paie-fiches'] = true; render(); }")
+    check('mois ignorés listés, seul le mois courant à valider', pg.evaluate("() => paDue()") == [m2] and 'Mois ignorés' in pg.inner_text('#app') and len(pg.query_selector_all('[data-a=paiunskip]')) == 2)
+    pg.click('[data-a=paiunskip][data-m="%s"]' % m0)
+    check('un mois remis à valider : revient dans « À valider »', pg.evaluate("() => paDue()") == [m0, m2] and etat_paie(pg)['skips'] == [m1])
+    pg.click('[data-a=paiunskip][data-m="%s"]' % m1)
+    check('dernier mois remis : section « Mois ignorés » disparue', pg.evaluate("() => paDue().length") == 3 and 'Mois ignorés' not in pg.inner_text('#app'))
+    pg.evaluate("(m) => { S.paie.skips = [m, addMonths(m, 1)]; render(); }", m0)
+    pg.click('[data-a=paiunskipall]')
+    check('« Tout remettre à valider »', etat_paie(pg)['skips'] == [] and pg.evaluate("() => paDue().length") == 3)
+    check('aucune erreur JavaScript', not pg.errors, pg.errors)
+
+
 def test_sync(browser):
     print('Synchronisation : le module voyage avec le reste des données (chiffré)')
     T.PUMP[0] = None   # la page « pompe » du faux serveur doit appartenir à ce navigateur
@@ -512,6 +531,7 @@ def main():
         test_ligne_dans_fiches_existantes(browser)
         test_net_calcule(browser)
         test_validation_ligne(browser)
+        test_mois_ignores(browser)
         test_sync(browser)
         browser.close()
     failed = [n for n, ok in T.RESULTS if not ok]
