@@ -117,6 +117,13 @@ Pour chaque compte courant ayant au moins un de ces réglages (fiche du compte),
 
 Les trois vues commencent par la même carte `accFoldHTML` (plus de rangée de puces) : une carte repliable (clé `hacc`, repliée par défaut) dont le titre donne « Comptes : N sur M · solde » (même total que « Solde des comptes cochés » : `balanceAt(date, false)`). Dépliée : les comptes par organisme (groupes repliables, clés `h:<nom>`, ouverts par défaut), chacun avec sa case ☑/☐ et son solde, plus « Tout cocher » / « Tout décocher » (action `allacc`). Sans organisme : liste plate. Un seul compte : pas de carte. Le choix (`S.shown`, propre à l'appareil) est le même pour toutes les pages, et l'état ouvert / replié aussi (mécanisme `FOLD` des menus de Réglages, clés `hacc` et `h:<nom>` partagées par les trois vues).
 
+## Patrimoine net (Épargne bloquée, Bien)
+
+- Types `bloque` (épargne bloquée : parts sociales, assurance-vie…) et `bien` (maison, véhicule…) : constante `ILLIQ`, test `isLiquid(a)`, liste `liqAccs()`.
+- Ils n'entrent jamais dans les totaux de liquidité : `scopeAccs` les ignore, `inScope` aussi (pas de lignes), `S.shown` ne les contient jamais (nettoyé dans `migrate` et `saveAcc`), les listes de choix de compte les masquent, `cash` est forcé à faux.
+- Leur valeur est le solde de référence (`anchor`) : date et montant modifiables dans le formulaire (libellés « Valeur… »).
+- `patrimoine(now)` additionne tous les comptes, cochés ou non : liquidités (courants), épargne (livrets), épargne bloquée, biens, moins emprunts (soldes négatifs), cartes de crédit (plafond − disponible) et achats en attente des cartes différées. `patrimoineHTML` = carte repliable `patri` sur l'Accueil (état de repli propre à l'appareil, `FOLD`).
+
 ## Menus repliables de Réglages
 
 - Chaque carte de Réglages est un `<details class="card fold">` produit par `foldCard(clé, titre, contenu, ouvertParDéfaut)`. Dans la carte Comptes, chaque organisme (champ « Organisme / groupe » d'un compte) est un `<details class="fold grp">` de clé `g:<nom>` ; le titre du groupe garde son solde. Sans organisme, ou avec un seul groupe sans nom, la liste des comptes reste plate comme avant.

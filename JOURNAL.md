@@ -3,7 +3,11 @@
 Journal des opérations réalisées sur le projet, à relire pour savoir où il en est.
 Les entrées les plus récentes sont en haut. À chaque intervention, ajouter une entrée datée.
 
-## État actuel (2026-11-16)
+## État actuel (2026-11-19)
+
+- **Version 33** : patrimoine net (carte repliée sur l'Accueil), types « Épargne bloquée » et « Bien ». 9 suites de tests, toutes vertes (`tests/test_patrimoine.py` : 37 vérifications). Points ouverts : voir l'entrée du 2026-11-19.
+
+### Rappel de l'état au 2026-11-16
 
 - App PWA locale d'abord (un seul fichier `index.html`), publiée sur GitHub Pages, utilisée sur iPhone et iPad. **Synchronisation chiffrée** (validée sur appareils le 2026-11-12), **rappel de sauvegarde partagé** (même logique que Plan du jour) et **bannière « Hors ligne »** ajoutés le 2026-11-12 (à valider sur iPhone et iPad). Service worker en version `compte-v32` (numéro affiché en bas de Réglages). **Réglages : menus repliables** depuis le 2026-11-17 (à valider sur iPhone et iPad).
 - Plan en 3 étapes entièrement présent dans le code : comptes multiples + virements, paiements en plusieurs fois, emprunts / livrets / cartes.
@@ -17,6 +21,15 @@ Les entrées les plus récentes sont en haut. À chaque intervention, ajouter un
 - Service worker en version `compte-v17`.
 - Reste à faire : tester l'import CSV avec l'export réel de la banque (point en attente depuis la première version).
 - Aucune donnée réelle n'est stockée dans le dépôt.
+
+## 2026-11-19 — Patrimoine net, Épargne bloquée et Bien (version 33)
+
+- Demande : les parts sociales sont du capital (ta richesse), comme l'emprunt face à la valeur de la maison ; l'app mélangeait liquidités et patrimoine.
+- Choix de l'utilisateur : carte « Patrimoine » repliée sur l'Accueil (total net sur la ligne repliée) ; type « Bien » avec valeur estimée et date, modifiable ; type dédié « Épargne bloquée ».
+- Réalisé : deux types (`bloque`, `bien`) ; carte `patrimoineHTML` (liquidités, épargne, épargne bloquée, biens, total possédé, emprunts, cartes de crédit dû, achats différés en attente, total dû, patrimoine net) ; ces deux types sont **toujours** hors reste à vivre, budget du jour, solde des comptes cochés, « Sortir du découvert » (`isLiquid`, `scopeAccs`, `inScope`), retirés des comptes cochés et des listes de choix de compte ; on y saisit une valeur (solde de référence), pas des lignes.
+- Choix faits sans question (modifiables) : le patrimoine compte tous les comptes, cochés ou non ; dettes = emprunts, carte de crédit (plafond − disponible) et achats différés en attente ; un compte passé en Épargne bloquée / Bien est décoché automatiquement.
+- Tests : `tests/test_patrimoine.py`, 37 vérifications ; les 8 autres suites inchangées et vertes.
+- Limites : pas de lignes sur ces deux types (virement vers une assurance-vie à saisir en mettant à jour sa valeur) ; pas d'historique de l'évolution du patrimoine.
 
 ## 2026-11-17 — Réglages : menus repliables, groupes d'organismes repliables (version 23)
 
