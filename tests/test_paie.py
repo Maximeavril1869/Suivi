@@ -56,7 +56,7 @@ def ajoute_ligne(pg, label, kind, montant, debut):
     pg.click('[data-a=savepaline]')
 
 
-VIDE = {'lines': [], 'slips': {}, 'skips': [], 'pt': {'amount': 0, 'hist': []}}
+VIDE = {'lines': [], 'slips': {}, 'skips': [], 'pt': {'amount': 0, 'hist': []}, 'acf': {'amount': 0, 'hist': []}}
 
 
 def test_donnees(browser):
@@ -72,7 +72,7 @@ def test_donnees(browser):
     pg.reload()
     check('sous-champs invalides : remplacés', etat_paie(pg) == VIDE, etat_paie(pg))
     p = {'lines': [{'id': 'l1', 'label': 'Brut', 'kind': 'gain', 'amount': 100, 'start': '2026-01', 'end': ''}], 'slips': {'2026-01': {'rows': [{'k': 'l1', 'label': 'Brut', 'kind': 'gain', 'amount': 100}]}}, 'skips': []}
-    ATT = {**p, 'pt': {'amount': 0, 'hist': []}, 'lines': [{**p['lines'][0], 'mode': 'fixed'}]}
+    ATT = {**p, 'pt': {'amount': 0, 'hist': []}, 'acf': {'amount': 0, 'hist': []}, 'lines': [{**p['lines'][0], 'mode': 'fixed'}]}
     pg.evaluate("([k, p]) => { const s = JSON.parse(localStorage.getItem(k)); s.paie = p; localStorage.setItem(k, JSON.stringify(s)); }", [T.KEY, p])
     pg.reload()
     check('données valides conservées au rechargement (mode fixe et valeur du point ajoutés)', etat_paie(pg) == ATT)
@@ -627,6 +627,44 @@ def test_selection_lignes(browser):
     check('aucune erreur JavaScript', not pg.errors, pg.errors)
 
 
+def test_point_acf(browser):
+    print('Valeur du point ACF : saisie, ligne « points ACF », valeur datée')
+    pg = device(browser, FauxSupabase())
+    msgs = []
+    pg.on('dialog', lambda d: (msgs.append(d.message), d.accept()))
+    depart(pg)
+    ouvre_paie(pg)
+    d0, d1 = mois(pg, -2), mois(pg, -1)
+    pg.evaluate("() => { FOLD['paie-mod'] = true; render(); }")
+    pg.click('[data-a=paiaddline]')
+    pg.fill('#pl_lab', 'ACF technicité')
+    pg.select_option('#pl_mode', 'acf')
+    pg.fill('#pl_amt', '22')
+    pick(pg, 'pl_start', d0)
+    pg.click('[data-a=savepaline]')
+    check('points ACF sans valeur du point ACF : refusé', 'point ACF' in msgs[-1] and etat_paie(pg)['lines'] == [], msgs)
+    pg.click('[data-a=closem]')
+    check('ligne « Valeur du point ACF » dans le modèle (à saisir)', 'Valeur du point ACF' in pg.inner_text('#app') and 'à saisir' in pg.inner_text('[data-a=paacf]'))
+    pg.click('[data-a=paacf]')
+    pg.fill('#pt_amt', '55,05')
+    pg.click('[data-a=savepapt]')
+    e = etat_paie(pg)
+    check('valeur ACF enregistrée sans toucher au point d\'indice', e['acf'] == {'amount': 55.05, 'hist': []} and e['pt'] == {'amount': 0, 'hist': []}, e)
+    ligne_calc(pg, 'ACF technicité', 'gain', 'acf', '22', d0)
+    check('ligne ACF : 22 points × 55,05 ÷ 12 = 100,93 (arrondi normal)', calc(pg, d0)['ACF technicité'] == 100.93, calc(pg, d0))
+    check('descriptif « 22 points ACF »', '22 points ACF' in pg.inner_text('#app'))
+    pg.click('[data-a=paiall]')
+    check('fiches validées avec 100,93', ligne_de(pg, d0, 'ACF technicité') == 100.93 and ligne_de(pg, d1, 'ACF technicité') == 100.93)
+    pg.click('[data-a=paacf]')
+    pg.fill('#pt_amt', '56')
+    pick(pg, 'pt_from', d1)
+    pg.click('[data-a=savepapt]')
+    check('valeur ACF datée : mois d\'avant inchangé, suivants recalculés (22 × 56 ÷ 12 = 102,67 arrondi)', ligne_de(pg, d0, 'ACF technicité') == 100.93 and ligne_de(pg, d1, 'ACF technicité') == 102.67, [ligne_de(pg, d0, 'ACF technicité'), ligne_de(pg, d1, 'ACF technicité')])
+    pg.evaluate("() => { S = migrate(JSON.parse(JSON.stringify(Object.assign({}, S, { paie: { lines: [], slips: {}, skips: [] } })))); }")
+    check('migration : valeur ACF absente → 0, historique vide', pg.evaluate("() => JSON.stringify(S.paie.acf)") == '{"amount":0,"hist":[]}')
+    check('aucune erreur JavaScript', not pg.errors, pg.errors)
+
+
 def ligne_calc(pg, label, kind, mode, val, debut, bases=(), coef=None, cap=None):
     pg.evaluate("() => { FOLD['paie-mod'] = true; render(); }")
     pg.click('[data-a=paiaddline]')
@@ -767,6 +805,11 @@ def test_calculees(browser):
     for vp, pts, attendu, arrondi in ((5623.23, 328, 1537.01, 1537.02), (5907.34, 435, 2141.41, 2141.41), (5820.04, 355, 1721.76, 1721.76)):
         r = pg.evaluate("([vp, pts]) => { S.paie.pt = { amount: vp, hist: [] }; const l = S.paie.lines.find((x) => x.label === 'Traitement brut'); l.amount = pts; delete l.hist; return paCompute(monthOf(today()))[l.id]; }", [vp, pts])
         check('points tronqués au centime : %s × %d = %s (un arrondi donnerait %s)' % (vp, pts, attendu, arrondi), r == attendu, r)
+    # points ACF : valeur annuelle par point (sans ÷ 100), arrondi normal, vérifié sur les bulletins (22 pts → 100,925 payé 100,93 ; 80 pts → 367,00 ; 40 → 183,50 ; 20 → 91,75)
+    for pts, attendu in ((22, 100.93), (80, 367.0), (40, 183.5), (20, 91.75)):
+        r = pg.evaluate("([pts]) => { S.paie.acf = { amount: 55.05, hist: [] }; const l = S.paie.lines.find((x) => x.label === 'Traitement brut'); l.mode = 'acf'; l.amount = pts; delete l.hist; return paCompute(monthOf(today()))[l.id]; }", [pts])
+        check('points ACF : %d × 55,05 ÷ 12 = %s' % (pts, attendu), r == attendu, r)
+    pg.evaluate("() => { const l = S.paie.lines.find((x) => x.label === 'Traitement brut'); l.mode = 'points'; l.amount = 328; S.paie.pt = { amount: 5623.23, hist: [] }; }")
     # base : une retenue cochée est retranchée (transfert primes/points), un gain est ajouté
     pg.evaluate("""() => {
       const d0 = monthOf(today()), mk = (id, label, kind, amount, extra) => Object.assign({ id, label, kind, amount, start: d0, end: '', mode: 'fixed' }, extra || {});
@@ -815,6 +858,7 @@ def main():
         test_validation_ligne(browser)
         test_mois_ignores(browser)
         test_calculees(browser)
+        test_point_acf(browser)
         test_sync(browser)
         browser.close()
     failed = [n for n, ok in T.RESULTS if not ok]

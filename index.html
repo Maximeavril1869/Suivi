@@ -123,7 +123,7 @@ const KEY='compte-salaire-v1';
 /* Épargne bloquée et Bien : comptent dans le patrimoine net seulement. Jamais dans le reste à vivre, le budget du jour, les soldes des comptes cochés ni « Sortir du découvert », et on n'y saisit pas de lignes : on met à jour leur valeur (solde de référence). */
 const ILLIQ={bloque:1,bien:1};
 const isLiquid=a=>!ILLIQ[a.type];
-const APP_VERSION='50';   // identique au numéro de la constante V de sw.js (compte-v50) : à incrémenter ensemble à chaque livraison
+const APP_VERSION='51';   // identique au numéro de la constante V de sw.js (compte-v51) : à incrémenter ensemble à chaque livraison
 const CATS={
  'Revenus':['Salaire','Primes','Remboursements','Intérêts','Autres revenus'],
  'Logement':['Loyer / crédit','Charges','Énergie','Internet / téléphone','Assurance habitation','Travaux / mobilier'],
@@ -171,11 +171,13 @@ function migrate(raw){
  if(!Array.isArray(o.paie.lines))o.paie.lines=[];
  if(!o.paie.slips||typeof o.paie.slips!=='object'||Array.isArray(o.paie.slips))o.paie.slips={};
  if(!Array.isArray(o.paie.skips))o.paie.skips=[];
- if(!o.paie.pt||typeof o.paie.pt!=='object'||Array.isArray(o.paie.pt))o.paie.pt={amount:0,hist:[]};
- if(!Array.isArray(o.paie.pt.hist))o.paie.pt.hist=[];
- if(typeof o.paie.pt.amount!=='number'||isNaN(o.paie.pt.amount))o.paie.pt.amount=0;
+ for(const k of ['pt','acf']){   // pt : point d'indice ; acf : point ACF (valeurs annuelles datées)
+  if(!o.paie[k]||typeof o.paie[k]!=='object'||Array.isArray(o.paie[k]))o.paie[k]={amount:0,hist:[]};
+  if(!Array.isArray(o.paie[k].hist))o.paie[k].hist=[];
+  if(typeof o.paie[k].amount!=='number'||isNaN(o.paie[k].amount))o.paie[k].amount=0;
+ }
  o.paie.lines.forEach(l=>{
-  if(!['fixed','points','rate'].includes(l.mode))l.mode='fixed';
+  if(!['fixed','points','acf','rate'].includes(l.mode))l.mode='fixed';
   if(l.mode==='rate'){
    if(!Array.isArray(l.base))l.base=[];
    if(typeof l.coef!=='number'||isNaN(l.coef))l.coef=100;
@@ -872,6 +874,8 @@ const paFmt=n=>new Intl.NumberFormat('fr-FR',{minimumFractionDigits:2,maximumFra
 const paR2=n=>Math.round(n*100)/100;
 /* Points : le montant est tronqué au centime (jamais arrondi), comme sur les bulletins DGFiP (5 623,23 × 328 points → 1 537,01 et non 1 537,02). Calcul en centimes, avec une tolérance pour les erreurs de virgule flottante. */
 const paTrunc=n=>Math.floor(Math.round(n*1e6)/1e6)/100;
+/* Points ACF : montant arrondi normalement au centime (fiche réelle : 22 points × 55,05 ÷ 12 = 100,925 payé 100,93). Calcul en centimes avec tolérance flottante. */
+const paRnd=n=>Math.round(Math.round(n*1e6)/1e6)/100;
 const paNum=n=>String(n).replace('.',',');
 function paAmt(l,ym){
  if(!l.hist||!l.hist.length)return l.amount;
@@ -900,6 +904,7 @@ function paCompute(ym,ov){
   if(ov[id]!==undefined)return memo[id]=ov[id];
   busy[id]=1;let v;const mode=l.mode||'fixed';
   if(mode==='points')v=paTrunc(paAmt(S.paie.pt,ym)*paAmt(l,ym)/12);
+  else if(mode==='acf')v=paRnd(paAmt(S.paie.acf,ym)*paAmt(l,ym)*100/12);
   else if(mode==='rate'){
    let b=(l.base||[]).reduce((t,i)=>by[i]&&paActive(by[i],ym)?t+(by[i].kind==='ret'?-1:1)*get(i):t,0);
    if(l.cap&&by[l.cap.line])b=Math.min(b,get(l.cap.line)*l.cap.pct/100);
@@ -1076,11 +1081,12 @@ function paSlipsHTML(){
 function paModelHTML(){
  const L=paOrdered(),now=monthOf(today()),same=l=>L.filter(x=>x.kind===l.kind);
  const cmp=paCompute(now),nm=Object.fromEntries(L.map(x=>[x.id,x.label]));
- const how=l=>l.mode==='points'?paNum(paAmt(l,now))+' points · ':l.mode==='rate'?paNum(paAmt(l,now))+' % de '+((l.base||[]).map(i=>nm[i]).filter(Boolean).join(' + ')||'(base vide)')+(l.coef!==100?' × '+paNum(l.coef)+' %':'')+(l.cap&&nm[l.cap.line]?' · max '+paNum(l.cap.pct)+' % de '+nm[l.cap.line]:'')+' · ':'';
+ const how=l=>l.mode==='points'?paNum(paAmt(l,now))+' points · ':l.mode==='acf'?paNum(paAmt(l,now))+' points ACF · ':l.mode==='rate'?paNum(paAmt(l,now))+' % de '+((l.base||[]).map(i=>nm[i]).filter(Boolean).join(' + ')||'(base vide)')+(l.coef!==100?' × '+paNum(l.coef)+' %':'')+(l.cap&&nm[l.cap.line]?' · max '+paNum(l.cap.pct)+' % de '+nm[l.cap.line]:'')+' · ':'';
  const pt=paAmt(S.paie.pt,now);
  const ptRow=`<div class="row" data-a="papoint"><div class="m"><div class="l">Valeur du point d'indice</div><div class="s">Annuelle, base indice 100 · lignes « points »</div></div><div class="a">${pt>0?paFmt(pt):'à saisir'}</div></div>`;
+ const acf=paAmt(S.paie.acf,now),acfRow=`<div class="row" data-a="paacf"><div class="m"><div class="l">Valeur du point ACF</div><div class="s">Annuelle, par point · lignes « points ACF »</div></div><div class="a">${acf>0?paFmt(acf):'à saisir'}</div></div>`;
  const sl=paSelL,bar=!L.length?'':sl?`<p class="s" style="margin:6px 0 0">Touche les lignes à supprimer du modèle. Les fiches déjà validées sont conservées.</p><div class="btns" style="margin:6px 0"><button class="ghost small" data-a="palselall">${sl.size===L.length?'Tout désélectionner':'Tout sélectionner'}</button><button class="ghost small" data-a="palselend">Annuler</button><button class="danger small" data-a="paldel" ${sl.size?'':'disabled'}>Supprimer (${sl.size})</button></div>`:'<div style="text-align:right;margin:4px 0"><button class="ghost small" data-a="palsel">Sélectionner</button></div>';
- const rows=bar+(sl?'':ptRow)+(L.map(l=>`<div class="row" data-a="${sl?'paltog':'paiedit'}" data-id="${esc(l.id)}">${sl?`<div style="font-size:20px;width:28px;flex:none" aria-hidden="true">${sl.has(l.id)?'☑':'☐'}</div>`:''}<div class="m"><div class="l">${esc(l.label)}</div><div class="s">${esc(PA_KINDS[l.kind])} · ${esc(how(l))}depuis ${esc(paShort(l.start))}${l.end?' · jusqu\'à '+esc(paShort(l.end)):''}</div></div><div class="a">${paFmt(cmp[l.id])}</div>${sl?'':`<div class="pa-mv"><button class="ghost" data-a="pamove" data-id="${esc(l.id)}" data-d="-1" aria-label="Monter"${same(l)[0]===l?' disabled':''}>▲</button><button class="ghost" data-a="pamove" data-id="${esc(l.id)}" data-d="1" aria-label="Descendre"${same(l).slice(-1)[0]===l?' disabled':''}>▼</button></div>`}</div>`).join('')||'<p class="mut" style="margin-top:8px">Aucune ligne. Ajoute les lignes de ton bulletin (traitement de base, indemnités, cotisations, impôt, brut, net à payer…) : elles se répéteront chaque mois jusqu\'à ce que tu en changes le montant.</p>');
+ const rows=bar+(sl?'':ptRow+acfRow)+(L.map(l=>`<div class="row" data-a="${sl?'paltog':'paiedit'}" data-id="${esc(l.id)}">${sl?`<div style="font-size:20px;width:28px;flex:none" aria-hidden="true">${sl.has(l.id)?'☑':'☐'}</div>`:''}<div class="m"><div class="l">${esc(l.label)}</div><div class="s">${esc(PA_KINDS[l.kind])} · ${esc(how(l))}depuis ${esc(paShort(l.start))}${l.end?' · jusqu\'à '+esc(paShort(l.end)):''}</div></div><div class="a">${paFmt(cmp[l.id])}</div>${sl?'':`<div class="pa-mv"><button class="ghost" data-a="pamove" data-id="${esc(l.id)}" data-d="-1" aria-label="Monter"${same(l)[0]===l?' disabled':''}>▲</button><button class="ghost" data-a="pamove" data-id="${esc(l.id)}" data-d="1" aria-label="Descendre"${same(l).slice(-1)[0]===l?' disabled':''}>▼</button></div>`}</div>`).join('')||'<p class="mut" style="margin-top:8px">Aucune ligne. Ajoute les lignes de ton bulletin (traitement de base, indemnités, cotisations, impôt, brut, net à payer…) : elles se répéteront chaque mois jusqu\'à ce que tu en changes le montant.</p>');
  return rows+'<div style="margin-top:10px"><button class="primary" data-a="paiaddline">Ajouter une ligne</button></div>';
 }
 function paSkipsHTML(){
@@ -1188,12 +1194,13 @@ function paPropagApply(){
  });
  paCommit(ym,rows,any);
 }
-const PA_MODES={fixed:'Montant fixe',points:'Nombre de points (× valeur du point)',rate:'Taux appliqué à une base'};
+const PA_MODES={fixed:'Montant fixe',points:'Nombre de points (× valeur du point d\'indice)',acf:'Nombre de points ACF (× valeur du point ACF)',rate:'Taux appliqué à une base'};
 function paModeUI(){
  const m=$('pl_mode').value;
- $('pl_amtl').textContent=m==='points'?'Nombre de points':m==='rate'?'Taux (%)':"Montant mensuel (€), tel qu'imprimé sur le bulletin";
+ $('pl_amtl').textContent=m==='points'||m==='acf'?'Nombre de points':m==='rate'?'Taux (%)':"Montant mensuel (€), tel qu'imprimé sur le bulletin";
  $('pl_rate').style.display=m==='rate'?'block':'none';
  $('pl_pthint').style.display=m==='points'?'block':'none';
+ $('pl_acfhint').style.display=m==='acf'?'block':'none';
 }
 function openPaLine(id){
  const l=id?S.paie.lines.find(x=>x.id===id):null;
@@ -1206,6 +1213,7 @@ function openPaLine(id){
  <label>Type<select id="pl_kind">${Object.keys(PA_KINDS).map(k=>`<option value="${k}"${d.kind===k?' selected':''}>${PA_KINDS[k]}</option>`).join('')}</select></label>
  <label>Calcul<select id="pl_mode">${Object.keys(PA_MODES).map(k=>`<option value="${k}"${mode===k?' selected':''}>${PA_MODES[k]}</option>`).join('')}</select></label>
  <label><span id="pl_amtl"></span><input id="pl_amt" inputmode="decimal" value="${l?esc(paNum(cur)):''}"></label>
+ <p id="pl_acfhint" class="s" style="display:none;margin-top:-6px">Montant = points × valeur annuelle du point ACF ÷ 12, arrondi normalement au centime. La valeur se saisit dans le modèle.</p>
  <p id="pl_pthint" class="s" style="display:none;margin-top:-6px">Montant = points × valeur annuelle (base indice 100) ÷ 100 ÷ 12, tronqué au centime (pas arrondi). La valeur se saisit dans le modèle.</p>
  <div id="pl_rate" style="display:none">
   <b style="display:block;margin:4px 0">Base du calcul</b>
@@ -1225,13 +1233,14 @@ function openPaLine(id){
 function savePaLine(){
  const label=$('pl_lab').value.trim();if(!label){alert('Libellé manquant.');return;}
  const mode=$('pl_mode').value;
- const a=parseAmount($('pl_amt').value);if(isNaN(a)){alert(mode==='points'?'Nombre de points invalide.':mode==='rate'?'Taux invalide.':'Montant invalide.');return;}
+ const a=parseAmount($('pl_amt').value);if(isNaN(a)){alert(mode==='points'||mode==='acf'?'Nombre de points invalide.':mode==='rate'?'Taux invalide.':'Montant invalide.');return;}
  const amt=paR2(Math.abs(a)),start=paPickVal('pl_start'),end=paPickVal('pl_end');
  if(!start){alert('Mois de la première fiche manquant.');return;}
  if(end&&end<start){alert('La dernière fiche ne peut pas précéder la première.');return;}
  const old=txCtx.plid?S.paie.lines.find(x=>x.id===txCtx.plid):null;
  const l={id:txCtx.plid||uid(),label,kind:$('pl_kind').value,amount:amt,start,end,mode};
  if(mode==='points'&&!(S.paie.pt.amount>0)){alert("Renseigne d'abord la valeur du point d'indice (ligne « Valeur du point d'indice » du modèle).");return;}
+ if(mode==='acf'&&!(S.paie.acf.amount>0)){alert("Renseigne d'abord la valeur du point ACF (ligne « Valeur du point ACF » du modèle).");return;}
  if(mode==='rate'){
   l.base=[...document.querySelectorAll('#modal .pl-b:checked')].map(x=>x.value);
   if(!l.base.length){alert('Coche au moins une ligne comme base du calcul.');return;}
@@ -1273,18 +1282,18 @@ function savePaLine(){
  else if(from)paRecalcSlips(from);
  save();closeModal();render();
 }
-function openPaPt(){
- const pt=S.paie.pt,first=!(pt.amount>0),now=monthOf(today());
- txCtx={ptfirst:first,ptcur:pt.amount};
- openModal(`<h3>Valeur du point d'indice</h3>
- <label>Valeur annuelle du traitement brut, base indice 100 (€)<input id="pt_amt" inputmode="decimal" value="${first?'':esc(paNum(paAmt(pt,now)))}"></label>
- <p class="s" style="margin-top:-6px">Les lignes « points » valent : nombre de points × cette valeur ÷ 100 ÷ 12, arrondi au centime seulement à la fin (aucun arrondi intermédiaire).</p>
- ${first?'':`<div id="pt_fromw"><label>À partir du mois de${paPick('pt_from',now)}</label><label>Motif (facultatif)<input id="pt_note" placeholder="ex. Revalorisation du point"></label><p class="s" style="margin-top:-6px">Les fiches validées de ce mois et des suivants seront recalculées (lignes calculées).</p></div>`}
+function openPaPt(k){
+ k=k||'pt';const acf=k==='acf',pt=S.paie[k],first=!(pt.amount>0),now=monthOf(today());
+ txCtx={ptfirst:first,ptcur:pt.amount,ptkey:k};
+ openModal(`<h3>${acf?'Valeur du point ACF':"Valeur du point d'indice"}</h3>
+ <label>${acf?'Valeur annuelle d\'un point ACF (€)':'Valeur annuelle du traitement brut, base indice 100 (€)'}<input id="pt_amt" inputmode="decimal" value="${first?'':esc(paNum(paAmt(pt,now)))}"></label>
+ <p class="s" style="margin-top:-6px">${acf?'Les lignes « points ACF » valent : nombre de points × cette valeur ÷ 12, arrondi normalement au centime (ex. 22 points × 55,05 ÷ 12 = 100,925 → 100,93).':'Les lignes « points » valent : nombre de points × cette valeur ÷ 100 ÷ 12, tronqué au centime (aucun arrondi intermédiaire).'}</p>
+ ${first?'':`<div id="pt_fromw"><label>À partir du mois de${paPick('pt_from',now)}</label><label>Motif (facultatif)<input id="pt_note" placeholder="${acf?'ex. Revalorisation du point ACF':'ex. Revalorisation du point'}"></label><p class="s" style="margin-top:-6px">Les fiches validées de ce mois et des suivants seront recalculées (lignes calculées).</p></div>`}
  <div class="btns"><button class="ghost" data-a="closem">Annuler</button><button class="primary" data-a="savepapt">Enregistrer</button></div>`);
 }
 function savePaPt(){
  const a=parseAmount($('pt_amt').value);if(isNaN(a)||a<=0){alert('Valeur invalide.');return;}
- const amt=Math.round(a*1e6)/1e6,pt=S.paie.pt;
+ const amt=Math.round(a*1e6)/1e6,pt=S.paie[txCtx.ptkey||'pt'];
  if(txCtx.ptfirst){pt.amount=amt;pt.hist=[];paRecalcSlips('0000-00');}
  else if(Math.abs(amt-paAmt(pt,monthOf(today())))>0.004){
   const from=paPickVal('pt_from');if(!from){alert('Indique le mois de départ.');return;}
@@ -1674,7 +1683,8 @@ function act(a,ds){
  else if(a==='paipt'){paPt=Number(ds.i);render();}
  else if(a==='paiaddline')openPaLine(null);
  else if(a==='pamove'){paMove(ds.id,Number(ds.d));save();render();}
- else if(a==='papoint')openPaPt();
+ else if(a==='papoint')openPaPt('pt');
+ else if(a==='paacf')openPaPt('acf');
  else if(a==='savepapt')savePaPt();
  else if(a==='parecalc')paRecalcForm();
  else if(a==='paiedit')openPaLine(ds.id);
