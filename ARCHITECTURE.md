@@ -135,8 +135,10 @@ flowchart LR
 |---|---|
 | `paie.lines[]` | Modèle : `id`, `label`, `kind` (`gain`, `ret` = retenue, `tot` = total ou information), `amount` (montant actuel), `start` et `end` (mois `AAAA-MM`, `end` facultatif), `hist` (montants datés `{from:'AAAA-MM', amount, note?}`, première entrée `0000-00`) |
 | `paie.slips{'AAAA-MM'}` | Fiche validée : `rows[]` = `{k, label, kind, amount}` **figées** (clé `k` = id de la ligne du modèle, ou `x:` + libellé normalisé pour une ligne ponctuelle) |
+| `paie.pt` | Valeur annuelle du point d'indice : `amount` (actuelle), `hist` (valeurs datées, comme les lignes) |
 | `paie.skips[]` | Mois ignorés (ne reviennent plus dans « À valider ») |
 
+- **Calcul des lignes** : chaque ligne du modèle a un `mode`. `fixed` : montant saisi. `points` : `amount` = nombre de points, valeur = points × `paie.pt` (valeur annuelle base indice 100) ÷ 100 ÷ 12, arrondie une seule fois à la fin. `rate` : `amount` = taux %, `base[]` = ids des lignes cochées, `cap` = `{pct, line}` (la base est plafonnée à pct % de cette ligne), `coef` = part de la base retenue ; valeur = base × coef × taux. `paCompute(ym, ov)` évalue en ordre de dépendance (boucles refusées à la saisie par `paCycle`) ; `paRecalcMonth` / `paRecalcSlips` remettent à jour les lignes calculées des fiches validées après un changement du modèle. Dans la fiche, `paLive` recalcule en direct les champs non saisis à la main.
 - **Totaux d'une fiche** (`paSums`) : brut = gains ; net à payer = gains − retenues ; net avant impôt = net à payer + retenue nommée « Prélèvement à la source » (repérée par son libellé, `paIsPas`) ; ratio = retenues en % du brut. Affichés dans la liste des fiches validées ; les lignes `tot` n'y comptent jamais.
 - **Ordre** : l'ordre du tableau `paie.lines` est celui choisi à la main (▲▼, `paMove` : échange avec la voisine du même type) ; l'affichage trie par type puis par cet ordre (`paOrdered`).
 - **Montants** saisis comme sur le bulletin : toujours positifs (valeur absolue), le type donne le sens.

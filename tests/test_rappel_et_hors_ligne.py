@@ -53,6 +53,7 @@ def test_rappel_local(browser):
     sw = (pathlib.Path(T.__file__).resolve().parent.parent / 'sw.js').read_text(encoding='utf-8')
     check('Réglages : la version de l’app est affichée', ver.startswith('Mon Compte · version '), ver)
     check('la version affichée correspond à celle du service worker', ("compte-v" + ver.split()[-1]) in sw, (ver, sw[:40]))
+    check('le service worker n\'est pas vide (install, activate, fetch)', all(w in sw for w in ('install', 'activate', 'fetch')), len(sw))
     go_home(pg)
     check('le rappel indique la durée', pg.locator('text=depuis 8 jours').count() == 1)
     pg.click('[data-a=bk-later]')

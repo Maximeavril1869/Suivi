@@ -82,7 +82,8 @@ def paie(x=1):
     for j, m in enumerate(['2026-07', '2026-08', '2026-09', '2026-10']):
         fiches[m] = {'rows': [{'k': l['id'], 'label': l['label'], 'kind': l['kind'], 'amount': round(l['amount'] + j * 10 * x, 2)} for l in lignes]
                      + ([{'k': 'x:prime', 'label': 'Prime exceptionnelle de fin d’année très longue', 'kind': 'gain', 'amount': 1234.56 * x}] if j == 3 else [])}
-    return {'lines': lignes, 'slips': fiches, 'skips': []}
+    lignes[2].update({'mode': 'rate', 'amount': 5, 'base': ['l0', 'l1'], 'coef': 98.25, 'cap': {'pct': 20, 'line': 'l0'}})
+    return {'lines': lignes, 'slips': fiches, 'skips': [], 'pt': {'amount': 590 * x, 'hist': []}}
 
 
 def etat(pg, x=1):
@@ -200,6 +201,10 @@ def fenetres(pg, largeur):
         ('bulletin : fiche validée', "() => openSlip('2026-10')"),
         ('bulletin : question « mois suivants »', "() => { openSlip('2026-10'); txCtx.pstash = { ym: '2026-10', rows: [], changed: [{ k: 'l0', label: S.paie.lines[0].label, old: 2500.55 * 50, amt: 2600.55 * 50, later: 2 }, { k: 'l1', label: S.paie.lines[1].label, old: 123.45, amt: 130, later: 1 }] }; openPropag(); }"),
         ('bulletin : ligne (nouvelle)', "() => openPaLine()"),
+        ('bulletin : ligne à taux (base cochée, plafond)', "() => openPaLine('l2')"),
+        ('bulletin : ligne à taux, nouvelle', "() => { openPaLine(); $('pl_mode').value = 'rate'; paModeUI(); }"),
+        ('bulletin : ligne en points', "() => { openPaLine(); $('pl_mode').value = 'points'; paModeUI(); }"),
+        ('bulletin : valeur du point (existante)', "() => openPaPt()"),
         ('bulletin : ligne (existante)', "() => { openPaLine('l0'); $('pl_fromw').style.display = 'block'; }"),
         ('modification groupée', "() => { sel = new Set(['t1', 't2']); openBulk(); }"),
         ('aperçu de règle', "() => openRulePreview(S.rules[0], S.tx.slice(0, 6))"),

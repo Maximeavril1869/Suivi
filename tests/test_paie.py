@@ -56,27 +56,31 @@ def ajoute_ligne(pg, label, kind, montant, debut):
     pg.click('[data-a=savepaline]')
 
 
+VIDE = {'lines': [], 'slips': {}, 'skips': [], 'pt': {'amount': 0, 'hist': []}}
+
+
 def test_donnees(browser):
     print('Données : migration et restauration')
     pg = device(browser, FauxSupabase())
     pg.evaluate("([k]) => localStorage.setItem(k, JSON.stringify({ v: 2, accounts: [{ id: 'a1', name: 'C', type: 'courant', opening: 0, cash: true }], shown: ['a1'], tx: [], rec: [], plans: [], rules: [], budgets: {}, payDates: {}, csvMaps: {}, skips: [] }))", [T.KEY])
     pg.reload()
-    check('anciennes données : S.paie créé vide', etat_paie(pg) == {'lines': [], 'slips': {}, 'skips': []}, etat_paie(pg))
+    check('anciennes données : S.paie créé vide', etat_paie(pg) == VIDE, etat_paie(pg))
     pg.evaluate("([k]) => { const s = JSON.parse(localStorage.getItem(k)); s.paie = 'n importe quoi'; localStorage.setItem(k, JSON.stringify(s)); }", [T.KEY])
     pg.reload()
-    check('champ paie illisible : remplacé par une structure vide', etat_paie(pg) == {'lines': [], 'slips': {}, 'skips': []}, etat_paie(pg))
+    check('champ paie illisible : remplacé par une structure vide', etat_paie(pg) == VIDE, etat_paie(pg))
     pg.evaluate("([k]) => { const s = JSON.parse(localStorage.getItem(k)); s.paie = { lines: 3, slips: [], skips: 'x' }; localStorage.setItem(k, JSON.stringify(s)); }", [T.KEY])
     pg.reload()
-    check('sous-champs invalides : remplacés', etat_paie(pg) == {'lines': [], 'slips': {}, 'skips': []}, etat_paie(pg))
+    check('sous-champs invalides : remplacés', etat_paie(pg) == VIDE, etat_paie(pg))
     p = {'lines': [{'id': 'l1', 'label': 'Brut', 'kind': 'gain', 'amount': 100, 'start': '2026-01', 'end': ''}], 'slips': {'2026-01': {'rows': [{'k': 'l1', 'label': 'Brut', 'kind': 'gain', 'amount': 100}]}}, 'skips': []}
+    ATT = {**p, 'pt': {'amount': 0, 'hist': []}, 'lines': [{**p['lines'][0], 'mode': 'fixed'}]}
     pg.evaluate("([k, p]) => { const s = JSON.parse(localStorage.getItem(k)); s.paie = p; localStorage.setItem(k, JSON.stringify(s)); }", [T.KEY, p])
     pg.reload()
-    check('données valides conservées au rechargement', etat_paie(pg) == p)
+    check('données valides conservées au rechargement (mode fixe et valeur du point ajoutés)', etat_paie(pg) == ATT)
     exp = pg.evaluate("() => JSON.parse(JSON.stringify(S))")
     pg.evaluate("(o) => { S = migrate(o); }", {k: v for k, v in exp.items() if k != 'paie'})
-    check('restauration d\'une sauvegarde d\'avant le module : pas de plantage, paie vide', etat_paie(pg) == {'lines': [], 'slips': {}, 'skips': []})
+    check('restauration d\'une sauvegarde d\'avant le module : pas de plantage, paie vide', etat_paie(pg) == VIDE)
     pg.evaluate("(o) => { S = migrate(o); }", exp)
-    check('restauration d\'une sauvegarde avec paie : conservée', etat_paie(pg) == p)
+    check('restauration d\'une sauvegarde avec paie : conservée', etat_paie(pg) == ATT)
     check('aucune erreur JavaScript', not pg.errors, pg.errors)
 
 
@@ -315,7 +319,7 @@ def test_propagation(browser):
     pg.fill('#pl_amt', '2000')
     pick(pg, 'pl_from', mm[-2])
     pg.click('[data-a=savepaline]')
-    check('fenêtre de la ligne : confirmation avec le nombre de fiches touchées (3)', msgs and msgs[0].startswith('3 fiches déjà validées') and 'passeront' in msgs[0], msgs)
+    check('fenêtre de la ligne : confirmation avec le nombre de fiches touchées (3)', msgs and msgs[0].startswith('3 fiches déjà validées') and 'seront modifiées' in msgs[0], msgs)
     check('fiches du mois choisi et suivantes au nouveau montant, précédentes inchangées', [etat_paie(pg)['slips'][mm[j]]['rows'][0]['amount'] for j in range(-5, 1)] == [1000, 1000, 1000, 2000, 2000, 2000], brut())
     check('aucune erreur JavaScript', not pg.errors, pg.errors)
 
@@ -562,6 +566,146 @@ def test_mois_ignores(browser):
     pg.evaluate("(m) => { S.paie.skips = [m, addMonths(m, 1)]; render(); }", m0)
     pg.click('[data-a=paiunskipall]')
     check('« Tout remettre à valider »', etat_paie(pg)['skips'] == [] and pg.evaluate("() => paDue().length") == 3)
+def ligne_calc(pg, label, kind, mode, val, debut, bases=(), coef=None, cap=None):
+    pg.evaluate("() => { FOLD['paie-mod'] = true; render(); }")
+    pg.click('[data-a=paiaddline]')
+    pg.fill('#pl_lab', label)
+    pg.select_option('#pl_kind', kind)
+    pg.select_option('#pl_mode', mode)
+    pg.fill('#pl_amt', val)
+    for b in bases:
+        pg.locator('#modal label.pbx', has_text=b).locator('input').check()
+    if coef:
+        pg.fill('#pl_coef', coef)
+    if cap:
+        pg.fill('#pl_cappct', cap[0])
+        pg.select_option('#pl_capline', label=cap[1])
+    pick(pg, 'pl_start', debut)
+    pg.click('[data-a=savepaline]')
+
+
+def calc(pg, m):
+    return pg.evaluate("(m) => { const c = paCompute(m), o = {}; S.paie.lines.forEach((l) => { o[l.label] = c[l.id]; }); return o; }", m)
+
+
+def ligne_de(pg, m, label):
+    return pg.evaluate("([m, lb]) => { const l = S.paie.lines.find((x) => x.label === lb), r = S.paie.slips[m].rows.find((x) => x.k === l.id); return r ? r.amount : null; }", [m, label])
+
+
+def test_calculees(browser):
+    print('Lignes calculées : points, taux, base cochée, plafond')
+    pg = device(browser, FauxSupabase())
+    msgs = []
+    pg.on('dialog', lambda d: (msgs.append(d.message), d.accept()))
+    depart(pg)
+    ouvre_paie(pg)
+    d0 = mois(pg, -2)
+    pg.evaluate("() => { FOLD['paie-mod'] = true; render(); }")
+    pg.click('[data-a=paiaddline]')
+    pg.fill('#pl_lab', 'Traitement brut')
+    pg.select_option('#pl_mode', 'points')
+    pg.fill('#pl_amt', '3000')
+    pick(pg, 'pl_start', d0)
+    pg.click('[data-a=savepaline]')
+    check('points sans valeur du point : refusé', 'valeur du point' in msgs[-1] and etat_paie(pg)['lines'] == [], msgs)
+    pg.click('[data-a=closem]')
+    pg.click('[data-a=papoint]')
+    pg.fill('#pt_amt', '590')
+    pg.click('[data-a=savepapt]')
+    check('valeur du point enregistrée (première saisie, sans historique)', etat_paie(pg)['pt'] == {'amount': 590, 'hist': []}, etat_paie(pg)['pt'])
+    ligne_calc(pg, 'Traitement brut', 'gain', 'points', '3000', d0)
+    ligne_calc(pg, 'Indemnité', 'gain', 'fixed', '200', d0)
+    ligne_calc(pg, 'Primes', 'gain', 'fixed', '150', d0)
+    ligne_calc(pg, 'CSG', 'ret', 'rate', '2,4', d0, ['Traitement brut', 'Indemnité', 'Primes'], coef='98,25')
+    ligne_calc(pg, 'RAFP', 'ret', 'rate', '5', d0, ['Primes'], cap=('20', 'Traitement brut'))
+    c = calc(pg, d0)
+    check('points : 3000 × 590 ÷ 100 ÷ 12 = 1475,00', c['Traitement brut'] == 1475, c)
+    check('taux sur base cochée × coefficient : 2,4 % de 98,25 % × 1825 = 43,03', c['CSG'] == 43.03, c)
+    check('plafond non atteint : 5 % de 150 = 7,50', c['RAFP'] == 7.5, c)
+    check('modèle : montants calculés affichés et descriptif de la base', '1 475,00' in norm(pg.inner_text('#app')) and '2,4 % de Traitement brut + Indemnité + Primes' in norm(pg.inner_text('#app')))
+    # refus : base vide, cycle
+    pg.click('[data-a=paiaddline]')
+    pg.fill('#pl_lab', 'Vide')
+    pg.select_option('#pl_mode', 'rate')
+    pg.fill('#pl_amt', '1')
+    pg.click('[data-a=savepaline]')
+    check('taux sans base cochée : refusé', 'au moins une ligne' in msgs[-1], msgs[-1])
+    pg.click('[data-a=closem]')
+    pg.evaluate("() => openPaLine(S.paie.lines.find((l) => l.label === 'Primes').id)")
+    pg.select_option('#pl_mode', 'rate')
+    pg.fill('#pl_amt', '10')
+    pg.locator('#modal label.pbx', has_text='CSG').locator('input').check()
+    pg.click('[data-a=savepaline]')
+    check('référence circulaire refusée', 'dépendre' in msgs[-1], msgs[-1])
+    check('ligne inchangée après le refus', [l['mode'] for l in etat_paie(pg)['lines'] if l['label'] == 'Primes'] == ['fixed'])
+    pg.click('[data-a=closem]')
+    # fiches : tout valider
+    msgs.clear()
+    pg.click('[data-a=paiall]')
+    sl = etat_paie(pg)['slips']
+    check('« Tout valider » : 3 fiches avec les lignes calculées', len(sl) == 3 and ligne_de(pg, d0, 'CSG') == 43.03 and ligne_de(pg, d0, 'Traitement brut') == 1475)
+    # fiche : recalcul en direct
+    d1, d2 = mois(pg, -1), mois(pg, 0)
+    pg.evaluate("(m) => openSlip(m)", d0)
+    val = lambda k: pg.evaluate("(k) => document.querySelector('#modal .pa-a[data-k=\"' + S.paie.lines.find((l) => l.label === k).id + '\"]').value", k)
+    check('fiche existante : champs calculés non recalculés d\'office (traités comme saisis)', val('CSG') == '43,03')
+    pg.click('[data-a=parecalc]')
+    pg.fill('#modal .pa-a[data-k="%s"]' % pg.evaluate("() => S.paie.lines.find((l) => l.label === 'Primes').id"), '400')
+    check('fiche : base modifiée, CSG recalculée en direct (48,93)', val('CSG') == '48,93', val('CSG'))
+    check('fiche : plafond atteint, RAFP = 5 % de 20 % × 1475 = 14,75', val('RAFP') == '14,75', val('RAFP'))
+    pg.fill('#modal .pa-a[data-k="%s"]' % pg.evaluate("() => S.paie.lines.find((l) => l.label === 'RAFP').id"), '9')
+    pg.fill('#modal .pa-a[data-k="%s"]' % pg.evaluate("() => S.paie.lines.find((l) => l.label === 'Primes').id"), '300')
+    check('correction manuelle d\'une ligne calculée conservée', val('RAFP') == '9', val('RAFP'))
+    check('les autres lignes calculées suivent (CSG 300 : 1975 × 98,25 % × 2,4 % = 46,57)', val('CSG') == '46,57', val('CSG'))
+    pg.click('[data-a=parecalc]')
+    check('« Recalculer » : RAFP revient au calcul (7,50 au plafond de 295 → min(300;295) = 295 × 5 % = 14,75)', val('RAFP') == '14,75', val('RAFP'))
+    msgs.clear()
+    pg.click('[data-a=saveslip]')
+    check('primes changées : question de propagation (ligne fixe seulement)', pg.evaluate("() => document.getElementById('modal').innerText").count('Primes') >= 1 and 'CSG' not in pg.inner_text('#modal'))
+    pg.click('[data-a=paipropag]')
+    check('fiche enregistrée avec les valeurs calculées', ligne_de(pg, d0, 'Primes') == 300 and ligne_de(pg, d0, 'CSG') == 46.57 and ligne_de(pg, d0, 'RAFP') == 14.75, [ligne_de(pg, d0, 'Primes'), ligne_de(pg, d0, 'CSG'), ligne_de(pg, d0, 'RAFP')])
+    check('mois suivants : prime à 300 et lignes calculées recalculées', ligne_de(pg, d1, 'Primes') == 300 and ligne_de(pg, d1, 'CSG') == 46.57 and ligne_de(pg, d2, 'RAFP') == 14.75)
+    # valeur du point datée
+    pg.click('[data-a=papoint]')
+    pg.fill('#pt_amt', '600')
+    pick(pg, 'pt_from', d1)
+    pg.click('[data-a=savepapt]')
+    check('valeur du point datée : mois d\'avant inchangé', ligne_de(pg, d0, 'Traitement brut') == 1475)
+    check('valeur du point datée : mois suivants recalculés (3000 × 600 ÷ 100 ÷ 12 = 1500)', ligne_de(pg, d1, 'Traitement brut') == 1500 and ligne_de(pg, d2, 'Traitement brut') == 1500)
+    check('CSG suit le nouveau traitement (2000 × 98,25 % × 2,4 % = 47,16)', ligne_de(pg, d1, 'CSG') == 47.16, ligne_de(pg, d1, 'CSG'))
+    check('historique du point : entrée datée', etat_paie(pg)['pt']['hist'][-1]['from'] == d1 and etat_paie(pg)['pt']['amount'] == 600)
+    # échelon : nombre de points qui change à partir de d2
+    pg.evaluate("() => openPaLine(S.paie.lines.find((l) => l.label === 'Traitement brut').id)")
+    pg.fill('#pl_amt', '3100')
+    pick(pg, 'pl_from', d2)
+    pg.click('[data-a=savepaline]')
+    check('échelon : points changés à partir du mois choisi (3100 × 600 ÷ 100 ÷ 12 = 1550), mois d\'avant inchangés', ligne_de(pg, d2, 'Traitement brut') == 1550 and ligne_de(pg, d1, 'Traitement brut') == 1500)
+    check('CSG du mois recalculée (2050 × 98,25 % × 2,4 % = 48,34)', ligne_de(pg, d2, 'CSG') == 48.34, ligne_de(pg, d2, 'CSG'))
+    # changement de base : recalcul proposé, accepté
+    msgs.clear()
+    pg.evaluate("() => openPaLine(S.paie.lines.find((l) => l.label === 'CSG').id)")
+    pg.locator('#modal label.pbx', has_text='Indemnité').locator('input').uncheck()
+    pg.click('[data-a=savepaline]')
+    check('base modifiée : recalcul des fiches proposé', msgs and 'Recalculer cette ligne dans les 3 fiches' in msgs[0], msgs)
+    check('CSG recalculée sans l\'indemnité (1475 + 300 = 1775 × 98,25 % × 2,4 % = 41,85)', ligne_de(pg, d0, 'CSG') == 41.85, ligne_de(pg, d0, 'CSG'))
+    # nouvelle ligne calculée dans des fiches existantes
+    ligne_calc(pg, 'Retenue test', 'ret', 'rate', '10', d0, ['Traitement brut'])
+    check('nouvelle ligne calculée ajoutée aux fiches existantes avec son montant calculé', ligne_de(pg, d0, 'Retenue test') == 147.5 and ligne_de(pg, d2, 'Retenue test') == 155, [ligne_de(pg, d0, 'Retenue test'), ligne_de(pg, d2, 'Retenue test')])
+    # changement de mode
+    msgs.clear()
+    pg.evaluate("() => openPaLine(S.paie.lines.find((l) => l.label === 'Retenue test').id)")
+    pg.select_option('#pl_mode', 'fixed')
+    pg.fill('#pl_amt', '12')
+    pg.click('[data-a=savepaline]')
+    l = [x for x in etat_paie(pg)['lines'] if x['label'] == 'Retenue test'][0]
+    check('changement de mode : avertissement, base/taux effacés, historique remis à zéro', msgs and 'efface l\'historique' in msgs[0] and l['mode'] == 'fixed' and 'base' not in l and 'hist' not in l, (msgs, l))
+    # aucun arrondi intermédiaire : 500 points × 5 623,23 ÷ 100 ÷ 12 = 2343,0125 → 2343,01 (arrondir d'abord le mois d'un point donnerait 2343,00)
+    pg.evaluate("() => { S.paie.pt = { amount: 5623.23, hist: [] }; S.paie.lines.find((l) => l.label === 'Traitement brut').amount = 500; delete S.paie.lines.find((l) => l.label === 'Traitement brut').hist; }")
+    check('valeur du point base indice 100, un seul arrondi à la fin (2343,01)', calc(pg, d0)['Traitement brut'] == 2343.01, calc(pg, d0))
+    # migration
+    pg.evaluate("() => { S.paie.lines.push({id: 'z', label: 'Z', kind: 'gain', amount: 1, start: '2026-01', end: '', mode: 'bizarre', base: [1]}); S = migrate(JSON.parse(JSON.stringify(S))); }")
+    z = [x for x in etat_paie(pg)['lines'] if x['id'] == 'z'][0]
+    check('migration : mode inconnu → fixe, champs de taux retirés', z['mode'] == 'fixed' and 'base' not in z)
     check('aucune erreur JavaScript', not pg.errors, pg.errors)
 
 
@@ -597,6 +741,7 @@ def main():
         test_ordre_modele(browser)
         test_validation_ligne(browser)
         test_mois_ignores(browser)
+        test_calculees(browser)
         test_sync(browser)
         browser.close()
     failed = [n for n, ok in T.RESULTS if not ok]
