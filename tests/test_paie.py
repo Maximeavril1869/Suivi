@@ -665,6 +665,35 @@ def test_point_acf(browser):
     check('aucune erreur JavaScript', not pg.errors, pg.errors)
 
 
+def test_ordre_base(browser):
+    print('Choix de la base : gains d\'abord, puis retenues, dans l\'ordre du modèle')
+    pg = device(browser, FauxSupabase())
+    pg.on('dialog', lambda d: d.accept())
+    depart(pg)
+    ouvre_paie(pg)
+    d0 = mois(pg, -1)
+    pg.evaluate("() => { FOLD['paie-mod'] = true; render(); }")
+    for lb, k, v in (('Ret1', 'ret', '10'), ('Gain1', 'gain', '100'), ('Info1', 'tot', '5'), ('Gain2', 'gain', '50'), ('Ret2', 'ret', '7')):
+        ajoute_ligne(pg, lb, k, v, d0)
+        pg.evaluate("() => { FOLD['paie-mod'] = true; render(); }")
+    def ordre():
+        return pg.evaluate("() => [...document.querySelectorAll('#modal .pl-b')].map((x) => x.closest('label').firstChild.nextSibling.textContent.trim())")
+    pg.click('[data-a=paiaddline]')
+    pg.select_option('#pl_mode', 'rate')
+    check('nouvelle ligne à taux : gains puis retenues puis totaux', ordre() == ['Gain1', 'Gain2', 'Ret1', 'Ret2', 'Info1'], ordre())
+    caps = pg.evaluate("() => [...document.querySelectorAll('#pl_capline option')].slice(1).map((o) => o.textContent)")
+    check('même ordre pour le plafond', caps == ['Gain1', 'Gain2', 'Ret1', 'Ret2', 'Info1'], caps)
+    pg.click('[data-a=closem]')
+    ajoute_ligne(pg, 'Gain0', 'gain', '1', d0)
+    ajoute_ligne(pg, 'Ret0', 'ret', '1', d0)
+    pg.click('[data-a=paiaddline]')
+    check('lignes créées depuis : intégrées à leur place (gain parmi les gains, retenue parmi les retenues)', ordre() == ['Gain1', 'Gain2', 'Gain0', 'Ret1', 'Ret2', 'Ret0', 'Info1'], ordre())
+    pg.click('[data-a=closem]')
+    pg.click('[data-a=paiedit]')
+    check('modification d\'une ligne : la ligne elle-même est exclue de la liste', len(ordre()) == 6, ordre())
+    check('aucune erreur JavaScript', not pg.errors, pg.errors)
+
+
 def ligne_calc(pg, label, kind, mode, val, debut, bases=(), coef=None, cap=None):
     pg.evaluate("() => { FOLD['paie-mod'] = true; render(); }")
     pg.click('[data-a=paiaddline]')
@@ -859,6 +888,7 @@ def main():
         test_mois_ignores(browser)
         test_calculees(browser)
         test_point_acf(browser)
+        test_ordre_base(browser)
         test_sync(browser)
         browser.close()
     failed = [n for n, ok in T.RESULTS if not ok]

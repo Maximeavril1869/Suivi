@@ -123,7 +123,7 @@ const KEY='compte-salaire-v1';
 /* Épargne bloquée et Bien : comptent dans le patrimoine net seulement. Jamais dans le reste à vivre, le budget du jour, les soldes des comptes cochés ni « Sortir du découvert », et on n'y saisit pas de lignes : on met à jour leur valeur (solde de référence). */
 const ILLIQ={bloque:1,bien:1};
 const isLiquid=a=>!ILLIQ[a.type];
-const APP_VERSION='51';   // identique au numéro de la constante V de sw.js (compte-v51) : à incrémenter ensemble à chaque livraison
+const APP_VERSION='52';   // identique au numéro de la constante V de sw.js (compte-v52) : à incrémenter ensemble à chaque livraison
 const CATS={
  'Revenus':['Salaire','Primes','Remboursements','Intérêts','Autres revenus'],
  'Logement':['Loyer / crédit','Charges','Énergie','Internet / téléphone','Assurance habitation','Travaux / mobilier'],
@@ -1206,7 +1206,7 @@ function openPaLine(id){
  const l=id?S.paie.lines.find(x=>x.id===id):null;
  const d=l||{label:'',kind:'gain',start:monthOf(today()),end:'',mode:'fixed'};
  const cur=l?paAmt(l,monthOf(today())):'';
- const oth=S.paie.lines.filter(x=>!l||x.id!==l.id),mode=d.mode||'fixed';
+ const oth=paOrdered().filter(x=>!l||x.id!==l.id),mode=d.mode||'fixed';   // base et plafond : gains, puis retenues, puis totaux, dans l'ordre du modèle (liste refaite à chaque ouverture)
  txCtx={plid:l?l.id:null,pcur:cur};
  openModal(`<h3>${l?'Modifier la ligne':'Nouvelle ligne du bulletin'}</h3>
  <label>Libellé (comme sur ton bulletin)<input id="pl_lab" value="${esc(d.label)}"></label>
