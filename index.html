@@ -123,7 +123,7 @@ const KEY='compte-salaire-v1';
 /* Épargne bloquée et Bien : comptent dans le patrimoine net seulement. Jamais dans le reste à vivre, le budget du jour, les soldes des comptes cochés ni « Sortir du découvert », et on n'y saisit pas de lignes : on met à jour leur valeur (solde de référence). */
 const ILLIQ={bloque:1,bien:1};
 const isLiquid=a=>!ILLIQ[a.type];
-const APP_VERSION='48';   // identique au numéro de la constante V de sw.js (compte-v48) : à incrémenter ensemble à chaque livraison
+const APP_VERSION='49';   // identique au numéro de la constante V de sw.js (compte-v49) : à incrémenter ensemble à chaque livraison
 const CATS={
  'Revenus':['Salaire','Primes','Remboursements','Intérêts','Autres revenus'],
  'Logement':['Loyer / crédit','Charges','Énergie','Internet / téléphone','Assurance habitation','Travaux / mobilier'],
@@ -870,6 +870,8 @@ const PA_MOIS=['janvier','février','mars','avril','mai','juin','juillet','août
 let paWin=0,paSel='',paPt=-1,paSelM=null;   // paSelM : null = hors sélection, sinon ensemble des mois cochés (suppression de fiches)
 const paFmt=n=>new Intl.NumberFormat('fr-FR',{minimumFractionDigits:2,maximumFractionDigits:2}).format(n);
 const paR2=n=>Math.round(n*100)/100;
+/* Points : le montant est tronqué au centime (jamais arrondi), comme sur les bulletins DGFiP (5 623,23 × 328 points → 1 537,01 et non 1 537,02). Calcul en centimes, avec une tolérance pour les erreurs de virgule flottante. */
+const paTrunc=n=>Math.floor(Math.round(n*1e6)/1e6)/100;
 const paNum=n=>String(n).replace('.',',');
 function paAmt(l,ym){
  if(!l.hist||!l.hist.length)return l.amount;
@@ -889,7 +891,7 @@ function paDue(){
  return out;
 }
 const paSlipMonths=()=>Object.keys(S.paie.slips).sort();
-/* Calcul des lignes : fixe = montant saisi ; points = points × valeur annuelle (indice 100) ÷ 100 ÷ 12 ; taux = taux % × base, la base étant la somme des lignes cochées (plafonnée à x % d'une autre ligne, puis multipliée par un coefficient). ov = montants imposés (saisis à la main) ; les références circulaires comptent 0 (elles sont refusées à la saisie). */
+/* Calcul des lignes : fixe = montant saisi ; points = points × valeur annuelle (indice 100) ÷ 100 ÷ 12, tronqué au centime ; taux = taux % × base, la base étant la somme des lignes cochées, les retenues cochées étant retranchées (ex. transfert primes/points) (plafonnée à x % d'une autre ligne, puis multipliée par un coefficient). ov = montants imposés (saisis à la main) ; les références circulaires comptent 0 (elles sont refusées à la saisie). */
 function paCompute(ym,ov){
  ov=ov||{};const L=S.paie.lines,by=Object.fromEntries(L.map(l=>[l.id,l])),memo={},busy={};
  const get=id=>{
@@ -897,9 +899,9 @@ function paCompute(ym,ov){
   const l=by[id];if(!l||busy[id])return 0;
   if(ov[id]!==undefined)return memo[id]=ov[id];
   busy[id]=1;let v;const mode=l.mode||'fixed';
-  if(mode==='points')v=paR2(paAmt(S.paie.pt,ym)*paAmt(l,ym)/100/12);
+  if(mode==='points')v=paTrunc(paAmt(S.paie.pt,ym)*paAmt(l,ym)/12);
   else if(mode==='rate'){
-   let b=(l.base||[]).reduce((t,i)=>by[i]&&paActive(by[i],ym)?t+get(i):t,0);
+   let b=(l.base||[]).reduce((t,i)=>by[i]&&paActive(by[i],ym)?t+(by[i].kind==='ret'?-1:1)*get(i):t,0);
    if(l.cap&&by[l.cap.line])b=Math.min(b,get(l.cap.line)*l.cap.pct/100);
    b=b*(l.coef===undefined?100:l.coef)/100;
    v=paR2(b*paAmt(l,ym)/100);
@@ -1195,10 +1197,10 @@ function openPaLine(id){
  <label>Type<select id="pl_kind">${Object.keys(PA_KINDS).map(k=>`<option value="${k}"${d.kind===k?' selected':''}>${PA_KINDS[k]}</option>`).join('')}</select></label>
  <label>Calcul<select id="pl_mode">${Object.keys(PA_MODES).map(k=>`<option value="${k}"${mode===k?' selected':''}>${PA_MODES[k]}</option>`).join('')}</select></label>
  <label><span id="pl_amtl"></span><input id="pl_amt" inputmode="decimal" value="${l?esc(paNum(cur)):''}"></label>
- <p id="pl_pthint" class="s" style="display:none;margin-top:-6px">Montant = points × valeur annuelle (base indice 100) ÷ 100 ÷ 12, arrondi seulement à la fin. La valeur se saisit dans le modèle.</p>
+ <p id="pl_pthint" class="s" style="display:none;margin-top:-6px">Montant = points × valeur annuelle (base indice 100) ÷ 100 ÷ 12, tronqué au centime (pas arrondi). La valeur se saisit dans le modèle.</p>
  <div id="pl_rate" style="display:none">
   <b style="display:block;margin:4px 0">Base du calcul</b>
-  <p class="s" style="margin-top:0">Coche les lignes dont la somme sert de base (les lignes ponctuelles n'en font pas partie).</p>
+  <p class="s" style="margin-top:0">Coche les lignes dont la somme sert de base : les gains s'ajoutent, les retenues cochées se retranchent (ex. transfert primes/points). Les lignes ponctuelles n'en font pas partie.</p>
   ${oth.map(o=>`<label class="pbx"><input type="checkbox" class="pl-b" value="${esc(o.id)}"${(d.base||[]).includes(o.id)?' checked':''}>${esc(o.label)} <span class="s">· ${esc(PA_KINDS[o.kind])}</span></label>`).join('')||'<p class="mut">Ajoute d\'abord les lignes qui serviront de base.</p>'}
   <label>Part de la base retenue (%) <span class="s">· ex. 98,25 pour la CSG</span><input id="pl_coef" inputmode="decimal" value="${esc(paNum(d.coef===undefined?100:d.coef))}"></label>
   <label>Plafond de la base (facultatif) <span class="s">· ex. 20 % du traitement brut</span></label>

@@ -702,6 +702,17 @@ def test_calculees(browser):
     # aucun arrondi intermédiaire : 500 points × 5 623,23 ÷ 100 ÷ 12 = 2343,0125 → 2343,01 (arrondir d'abord le mois d'un point donnerait 2343,00)
     pg.evaluate("() => { S.paie.pt = { amount: 5623.23, hist: [] }; S.paie.lines.find((l) => l.label === 'Traitement brut').amount = 500; delete S.paie.lines.find((l) => l.label === 'Traitement brut').hist; }")
     check('valeur du point base indice 100, un seul arrondi à la fin (2343,01)', calc(pg, d0)['Traitement brut'] == 2343.01, calc(pg, d0))
+    # points : troncature au centime, vérifiée sur trois bulletins réels (valeur du point, points, traitement brut imprimé)
+    for vp, pts, attendu, arrondi in ((5623.23, 328, 1537.01, 1537.02), (5907.34, 435, 2141.41, 2141.41), (5820.04, 355, 1721.76, 1721.76)):
+        r = pg.evaluate("([vp, pts]) => { S.paie.pt = { amount: vp, hist: [] }; const l = S.paie.lines.find((x) => x.label === 'Traitement brut'); l.amount = pts; delete l.hist; return paCompute(monthOf(today()))[l.id]; }", [vp, pts])
+        check('points tronqués au centime : %s × %d = %s (un arrondi donnerait %s)' % (vp, pts, attendu, arrondi), r == attendu, r)
+    # base : une retenue cochée est retranchée (transfert primes/points), un gain est ajouté
+    pg.evaluate("""() => {
+      const d0 = monthOf(today()), mk = (id, label, kind, amount, extra) => Object.assign({ id, label, kind, amount, start: d0, end: '', mode: 'fixed' }, extra || {});
+      S.paie.lines = [mk('t', 'Traitement', 'gain', 1000), mk('p', 'Prime', 'gain', 200), mk('x', 'Transfert', 'ret', 10), mk('c', 'CSG base', 'ret', 6.8, { mode: 'rate', base: ['t', 'p', 'x'], coef: 98.25 })];
+    }""")
+    r = pg.evaluate("() => paCompute(monthOf(today())).c")
+    check('base : gains ajoutés, retenue cochée retranchée (1000 + 200 − 10 = 1190 × 98,25 % × 6,8 % = 79,50)', r == 79.5, r)
     # migration
     pg.evaluate("() => { S.paie.lines.push({id: 'z', label: 'Z', kind: 'gain', amount: 1, start: '2026-01', end: '', mode: 'bizarre', base: [1]}); S = migrate(JSON.parse(JSON.stringify(S))); }")
     z = [x for x in etat_paie(pg)['lines'] if x['id'] == 'z'][0]
