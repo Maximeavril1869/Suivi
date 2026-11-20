@@ -566,6 +566,67 @@ def test_mois_ignores(browser):
     pg.evaluate("(m) => { S.paie.skips = [m, addMonths(m, 1)]; render(); }", m0)
     pg.click('[data-a=paiunskipall]')
     check('« Tout remettre à valider »', etat_paie(pg)['skips'] == [] and pg.evaluate("() => paDue().length") == 3)
+def test_selection_lignes(browser):
+    print('Sélectionner des lignes du modèle pour les supprimer')
+    pg = device(browser, FauxSupabase())
+    msgs = []
+    refus = [False]
+    pg.on('dialog', lambda d: (msgs.append(d.message), d.dismiss() if refus[0] else d.accept()))
+    depart(pg)
+    ouvre_paie(pg)
+    d0 = mois(pg, -1)
+    pg.evaluate("() => { FOLD['paie-mod'] = true; render(); }")
+    check('sans ligne : pas de bouton « Sélectionner »', pg.locator('[data-a=palsel]').count() == 0)
+    for lb, k, v in (('Brut', 'gain', '1000'), ('Prime', 'gain', '100'), ('Cotis', 'ret', '50'), ('Autre', 'ret', '5')):
+        ajoute_ligne(pg, lb, k, v, d0)
+    pg.evaluate("() => { FOLD['paie-mod'] = true; render(); }")
+    pg.click('[data-a=paiall]')
+    ids = pg.evaluate("() => Object.fromEntries(S.paie.lines.map((l) => [l.label, l.id]))")
+    pg.click('[data-a=palsel]')
+    check('mode sélection : « Supprimer (0) » désactivé, flèches ▲▼ masquées', pg.inner_text('[data-a=paldel]').strip() == 'Supprimer (0)' and pg.evaluate("() => document.querySelector('[data-a=paldel]').disabled") is True and pg.locator('[data-a=pamove]').count() == 0)
+    pg.click('[data-a=paltog][data-id="%s"]' % ids['Prime'])
+    pg.click('[data-a=paltog][data-id="%s"]' % ids['Autre'])
+    check('deux lignes cochées : compteur à 2, cases ☑, la ligne ne s\'ouvre pas', pg.inner_text('[data-a=paldel]').strip() == 'Supprimer (2)' and pg.inner_text('[data-a=paltog][data-id="%s"]' % ids['Prime']).count('☑') == 1 and not pg.evaluate("() => document.getElementById('modal').classList.contains('open')"))
+    pg.click('[data-a=palselall]')
+    check('« Tout sélectionner » : 4 lignes', pg.inner_text('[data-a=paldel]').strip() == 'Supprimer (4)')
+    pg.click('[data-a=palselall]')
+    pg.click('[data-a=paltog][data-id="%s"]' % ids['Prime'])
+    pg.click('[data-a=paltog][data-id="%s"]' % ids['Autre'])
+    refus[0] = True
+    pg.click('[data-a=paldel]')
+    check('confirmation demandée (2 lignes) ; refusée : rien n\'est supprimé', msgs and msgs[-1].startswith('Supprimer 2 lignes') and len(etat_paie(pg)['lines']) == 4, msgs)
+    refus[0] = False
+    pg.click('[data-a=paldel]')
+    e = etat_paie(pg)
+    check('confirmée : les 2 lignes cochées supprimées, les autres gardées', sorted(l['label'] for l in e['lines']) == ['Brut', 'Cotis'], e['lines'])
+    check('fiches validées conservées (4 lignes chacune), sortie du mode sélection', all(len(sl['rows']) == 4 for sl in e['slips'].values()) and pg.locator('[data-a=palsel]').count() == 1 and pg.locator('[data-a=paldel]').count() == 0)
+    # annuler, puis quitter la page en pleine sélection
+    pg.click('[data-a=palsel]')
+    pg.click('[data-a=paltog][data-id="%s"]' % ids['Brut'])
+    pg.click('[data-a=palselend]')
+    check('« Annuler » : rien n\'est supprimé', len(etat_paie(pg)['lines']) == 2 and pg.locator('[data-a=palsel]').count() == 1)
+    pg.click('[data-a=palsel]')
+    pg.click('[data-a=paieback]')
+    ouvre_paie(pg)
+    check('quitter la page en pleine sélection : sélection abandonnée', pg.evaluate("() => paSelL") is None)
+    # base : une ligne à taux dont toute la base disparaît bloque la suppression ; sinon la base est nettoyée
+    pg.evaluate("""() => {
+      const d0 = monthOf(addMonths(monthOf(today()), -1)), mk = (id, label, kind, amount, extra) => Object.assign({ id, label, kind, amount, start: d0, end: '', mode: 'fixed' }, extra || {});
+      S.paie.lines = [mk('a', 'A', 'gain', 100), mk('b', 'B', 'gain', 200), mk('c', 'C', 'ret', 5, { mode: 'rate', base: ['a', 'b'], coef: 100, cap: { pct: 50, line: 'b' } }), mk('d', 'D', 'ret', 5, { mode: 'rate', base: ['a'], coef: 100 })];
+      render();
+    }""")
+    pg.evaluate("() => { FOLD['paie-mod'] = true; render(); }")
+    pg.click('[data-a=palsel]')
+    pg.click('[data-a=paltog][data-id="a"]')
+    pg.click('[data-a=paldel]')
+    check('suppression refusée si une ligne à taux n\'aurait plus de base', 'Impossible' in msgs[-1] and '« D »' in msgs[-1] and len(etat_paie(pg)['lines']) == 4, msgs[-1])
+    pg.click('[data-a=paltog][data-id="a"]')
+    pg.click('[data-a=paltog][data-id="b"]')
+    pg.click('[data-a=paldel]')
+    check('suppression d\'une base partagée : base nettoyée, plafond retiré', pg.evaluate("() => S.paie.lines.map((l) => l.label + ':' + (l.base || []).join(',') + ':' + (l.cap ? 1 : 0)).join('|')") == 'A::0|C:a:0|D:a:0', pg.evaluate("() => JSON.stringify(S.paie.lines)"))
+    check('aucune erreur JavaScript', not pg.errors, pg.errors)
+
+
 def ligne_calc(pg, label, kind, mode, val, debut, bases=(), coef=None, cap=None):
     pg.evaluate("() => { FOLD['paie-mod'] = true; render(); }")
     pg.click('[data-a=paiaddline]')
@@ -746,6 +807,7 @@ def main():
         test_parcours(browser)
         test_propagation(browser)
         test_selection_suppression(browser)
+        test_selection_lignes(browser)
         test_ligne_dans_fiches_existantes(browser)
         test_net_calcule(browser)
         test_totaux_fiche(browser)

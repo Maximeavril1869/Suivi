@@ -123,7 +123,7 @@ const KEY='compte-salaire-v1';
 /* Épargne bloquée et Bien : comptent dans le patrimoine net seulement. Jamais dans le reste à vivre, le budget du jour, les soldes des comptes cochés ni « Sortir du découvert », et on n'y saisit pas de lignes : on met à jour leur valeur (solde de référence). */
 const ILLIQ={bloque:1,bien:1};
 const isLiquid=a=>!ILLIQ[a.type];
-const APP_VERSION='49';   // identique au numéro de la constante V de sw.js (compte-v49) : à incrémenter ensemble à chaque livraison
+const APP_VERSION='50';   // identique au numéro de la constante V de sw.js (compte-v50) : à incrémenter ensemble à chaque livraison
 const CATS={
  'Revenus':['Salaire','Primes','Remboursements','Intérêts','Autres revenus'],
  'Logement':['Loyer / crédit','Charges','Énergie','Internet / téléphone','Assurance habitation','Travaux / mobilier'],
@@ -867,7 +867,7 @@ const grp=[];S.accounts.forEach(a=>{const g=a.group||'';let e=grp.find(x=>x.g===
 const PA_KINDS={gain:'Gain',ret:'Retenue',tot:'Total / information'};
 const PA_RANK={gain:0,ret:1,tot:2};
 const PA_MOIS=['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
-let paWin=0,paSel='',paPt=-1,paSelM=null;   // paSelM : null = hors sélection, sinon ensemble des mois cochés (suppression de fiches)
+let paWin=0,paSel='',paPt=-1,paSelM=null,paSelL=null;   // paSelM : null = hors sélection, sinon ensemble des mois cochés (suppression de fiches) ; paSelL : idem pour les lignes du modèle
 const paFmt=n=>new Intl.NumberFormat('fr-FR',{minimumFractionDigits:2,maximumFractionDigits:2}).format(n);
 const paR2=n=>Math.round(n*100)/100;
 /* Points : le montant est tronqué au centime (jamais arrondi), comme sur les bulletins DGFiP (5 623,23 × 328 points → 1 537,01 et non 1 537,02). Calcul en centimes, avec une tolérance pour les erreurs de virgule flottante. */
@@ -952,6 +952,14 @@ function paSums(rows){
 }
 /* Lignes du modèle dans l'ordre d'affichage : par type (gains, retenues, totaux) puis dans l'ordre choisi à la main. */
 const paOrdered=()=>S.paie.lines.map((l,i)=>[l,i]).sort((a,b)=>PA_RANK[a[0].kind]-PA_RANK[b[0].kind]||a[1]-b[1]).map(x=>x[0]);
+/* Supprime des lignes du modèle (les fiches validées sont conservées). Refus si une ligne à taux restante n'aurait plus aucune base ; sinon les lignes supprimées sortent des bases et plafonds. Renvoie un message d'erreur ou ''. */
+function paDelLines(ids){
+ const rest=S.paie.lines.filter(l=>!ids.has(l.id));
+ const bad=rest.filter(l=>l.mode==='rate'&&(l.base||[]).length&&(l.base||[]).every(i=>ids.has(i)));
+ if(bad.length)return 'Impossible : '+bad.map(l=>'« '+l.label+' »').join(', ')+' n\'aurait plus aucune ligne comme base. Supprime-la aussi, ou change sa base d\'abord.';
+ rest.forEach(l=>{if(l.mode==='rate'){l.base=(l.base||[]).filter(i=>!ids.has(i));if(l.cap&&ids.has(l.cap.line))delete l.cap;}});
+ S.paie.lines=rest;return '';
+}
 function paMove(id,d){
  const L=S.paie.lines,i=L.findIndex(l=>l.id===id);if(i<0)return;
  const same=paOrdered().filter(l=>l.kind===L[i].kind),k=same.findIndex(l=>l.id===id),o=same[k+d];if(!o)return;
@@ -1071,7 +1079,8 @@ function paModelHTML(){
  const how=l=>l.mode==='points'?paNum(paAmt(l,now))+' points · ':l.mode==='rate'?paNum(paAmt(l,now))+' % de '+((l.base||[]).map(i=>nm[i]).filter(Boolean).join(' + ')||'(base vide)')+(l.coef!==100?' × '+paNum(l.coef)+' %':'')+(l.cap&&nm[l.cap.line]?' · max '+paNum(l.cap.pct)+' % de '+nm[l.cap.line]:'')+' · ':'';
  const pt=paAmt(S.paie.pt,now);
  const ptRow=`<div class="row" data-a="papoint"><div class="m"><div class="l">Valeur du point d'indice</div><div class="s">Annuelle, base indice 100 · lignes « points »</div></div><div class="a">${pt>0?paFmt(pt):'à saisir'}</div></div>`;
- const rows=ptRow+(L.map(l=>`<div class="row" data-a="paiedit" data-id="${esc(l.id)}"><div class="m"><div class="l">${esc(l.label)}</div><div class="s">${esc(PA_KINDS[l.kind])} · ${esc(how(l))}depuis ${esc(paShort(l.start))}${l.end?' · jusqu\'à '+esc(paShort(l.end)):''}</div></div><div class="a">${paFmt(cmp[l.id])}</div><div class="pa-mv"><button class="ghost" data-a="pamove" data-id="${esc(l.id)}" data-d="-1" aria-label="Monter"${same(l)[0]===l?' disabled':''}>▲</button><button class="ghost" data-a="pamove" data-id="${esc(l.id)}" data-d="1" aria-label="Descendre"${same(l).slice(-1)[0]===l?' disabled':''}>▼</button></div></div>`).join('')||'<p class="mut" style="margin-top:8px">Aucune ligne. Ajoute les lignes de ton bulletin (traitement de base, indemnités, cotisations, impôt, brut, net à payer…) : elles se répéteront chaque mois jusqu\'à ce que tu en changes le montant.</p>');
+ const sl=paSelL,bar=!L.length?'':sl?`<p class="s" style="margin:6px 0 0">Touche les lignes à supprimer du modèle. Les fiches déjà validées sont conservées.</p><div class="btns" style="margin:6px 0"><button class="ghost small" data-a="palselall">${sl.size===L.length?'Tout désélectionner':'Tout sélectionner'}</button><button class="ghost small" data-a="palselend">Annuler</button><button class="danger small" data-a="paldel" ${sl.size?'':'disabled'}>Supprimer (${sl.size})</button></div>`:'<div style="text-align:right;margin:4px 0"><button class="ghost small" data-a="palsel">Sélectionner</button></div>';
+ const rows=bar+(sl?'':ptRow)+(L.map(l=>`<div class="row" data-a="${sl?'paltog':'paiedit'}" data-id="${esc(l.id)}">${sl?`<div style="font-size:20px;width:28px;flex:none" aria-hidden="true">${sl.has(l.id)?'☑':'☐'}</div>`:''}<div class="m"><div class="l">${esc(l.label)}</div><div class="s">${esc(PA_KINDS[l.kind])} · ${esc(how(l))}depuis ${esc(paShort(l.start))}${l.end?' · jusqu\'à '+esc(paShort(l.end)):''}</div></div><div class="a">${paFmt(cmp[l.id])}</div>${sl?'':`<div class="pa-mv"><button class="ghost" data-a="pamove" data-id="${esc(l.id)}" data-d="-1" aria-label="Monter"${same(l)[0]===l?' disabled':''}>▲</button><button class="ghost" data-a="pamove" data-id="${esc(l.id)}" data-d="1" aria-label="Descendre"${same(l).slice(-1)[0]===l?' disabled':''}>▼</button></div>`}</div>`).join('')||'<p class="mut" style="margin-top:8px">Aucune ligne. Ajoute les lignes de ton bulletin (traitement de base, indemnités, cotisations, impôt, brut, net à payer…) : elles se répéteront chaque mois jusqu\'à ce que tu en changes le montant.</p>');
  return rows+'<div style="margin-top:10px"><button class="primary" data-a="paiaddline">Ajouter une ligne</button></div>';
 }
 function paSkipsHTML(){
@@ -1648,9 +1657,14 @@ function act(a,ds){
  else if(a==='paitog'){if(paSelM){if(paSelM.has(ds.m))paSelM.delete(ds.m);else paSelM.add(ds.m);}render();}
  else if(a==='paiselall'){const ms=paSlipMonths();paSelM=paSelM&&paSelM.size===ms.length?new Set():new Set(ms);render();}
  else if(a==='paiselend'){paSelM=null;render();}
+ else if(a==='palsel'){paSelL=new Set();FOLD['paie-mod']=true;try{localStorage.setItem(FOLD_KEY,JSON.stringify(FOLD));}catch(x){}render();}
+ else if(a==='paltog'){if(paSelL){if(paSelL.has(ds.id))paSelL.delete(ds.id);else paSelL.add(ds.id);}render();}
+ else if(a==='palselall'){const ids=S.paie.lines.map(l=>l.id);paSelL=paSelL&&paSelL.size===ids.length?new Set():new Set(ids);render();}
+ else if(a==='palselend'){paSelL=null;render();}
+ else if(a==='paldel'){const n=paSelL?paSelL.size:0;if(n&&confirm('Supprimer '+n+' ligne'+(n>1?'s':'')+' du modèle ? Les fiches déjà validées sont conservées.')){const e=paDelLines(paSelL);if(e){alert(e);return;}paSelL=null;save();render();}}
  else if(a==='paidel'){const n=paSelM?paSelM.size:0;if(n&&confirm('Supprimer '+n+' fiche'+(n>1?'s':'')+' de paye ? Les mois supprimés reviendront dans « À valider ».')){paSelM.forEach(m=>{delete S.paie.slips[m];});paSelM=null;save();render();}}
- else if(a==='openpaie'){sel=null;paSelM=null;view='paie';window.scrollTo(0,0);render();}
- else if(a==='paieback'){paSelM=null;view='rec';window.scrollTo(0,0);render();}
+ else if(a==='openpaie'){sel=null;paSelM=null;paSelL=null;view='paie';window.scrollTo(0,0);render();}
+ else if(a==='paieback'){paSelM=null;paSelL=null;view='rec';window.scrollTo(0,0);render();}
  else if(a==='paiopen'||a==='paislip')openSlip(ds.m);
  else if(a==='paiskip'){if(!S.paie.skips.includes(ds.m))S.paie.skips.push(ds.m);save();render();}
  else if(a==='paiall'){const due=paDue();if(due.length&&confirm('Valider '+due.length+' mois avec les montants du modèle ? Tu pourras corriger chaque fiche ensuite.')){due.forEach(m=>{S.paie.slips[m]={rows:paRowsFromModel(m)};});save();render();}}
@@ -1665,7 +1679,7 @@ function act(a,ds){
  else if(a==='parecalc')paRecalcForm();
  else if(a==='paiedit')openPaLine(ds.id);
  else if(a==='savepaline')savePaLine();
- else if(a==='delpaline'){if(confirm('Supprimer cette ligne du modèle ? Les fiches déjà validées sont conservées.')){S.paie.lines=S.paie.lines.filter(x=>x.id!==txCtx.plid);save();closeModal();render();}}
+ else if(a==='delpaline'){if(confirm('Supprimer cette ligne du modèle ? Les fiches déjà validées sont conservées.')){const e=paDelLines(new Set([txCtx.plid]));if(e){alert(e);return;}save();closeModal();render();}}
  else if(a==='paaddx'){$('pa_x').insertAdjacentHTML('beforeend',paXRow({kind:'gain'}));}
  else if(a==='saveslip')saveSlip();
  else if(a==='paipropag')paPropagApply();
