@@ -127,7 +127,7 @@ const KEY='compte-salaire-v1';
 /* Épargne bloquée et Bien : comptent dans le patrimoine net seulement. Jamais dans le reste à vivre, le budget du jour, les soldes des comptes cochés ni « Sortir du découvert », et on n'y saisit pas de lignes : on met à jour leur valeur (solde de référence). */
 const ILLIQ={bloque:1,bien:1};
 const isLiquid=a=>!ILLIQ[a.type];
-const APP_VERSION='62';   // identique au numéro de la constante V de sw.js (compte-v62) : à incrémenter ensemble à chaque livraison
+const APP_VERSION='63';   // identique au numéro de la constante V de sw.js (compte-v62) : à incrémenter ensemble à chaque livraison
 const CATS={
  'Revenus':['Salaire','Primes','Remboursements','Intérêts','Autres revenus'],
  'Logement':['Loyer / crédit','Charges','Énergie','Internet / téléphone','Assurance habitation','Travaux / mobilier'],
@@ -873,7 +873,7 @@ const grp=[];S.accounts.forEach(a=>{const g=a.group||'';let e=grp.find(x=>x.g===
 const PA_KINDS={gain:'Gain',ret:'Retenue',tot:'Total / information'};
 const PA_RANK={gain:0,ret:1,tot:2};
 const PA_MOIS=['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
-let paWin=0,paSel='',paPt=-1,paSelM=null,paSelL=null,paSelK=null;   // paSelK : idem pour les mois ignorés (remise à valider) ; paSelM : null = hors sélection, sinon ensemble des mois cochés (suppression de fiches) ; paSelL : idem pour les lignes du modèle
+let paWin=0,paFrom='',paTo='',paSel='',paPt=-1,paSelM=null,paSelL=null,paSelK=null;   // paSelK : idem pour les mois ignorés (remise à valider) ; paSelM : null = hors sélection, sinon ensemble des mois cochés (suppression de fiches) ; paSelL : idem pour les lignes du modèle
 const paFmt=n=>new Intl.NumberFormat('fr-FR',{minimumFractionDigits:2,maximumFractionDigits:2}).format(n);
 const paR2=n=>Math.round(n*100)/100;
 /* Points : le montant est tronqué au centime (jamais arrondi), comme sur les bulletins DGFiP (5 623,23 × 328 points → 1 537,01 et non 1 537,02). Calcul en centimes, avec une tolérance pour les erreurs de virgule flottante. */
@@ -899,6 +899,8 @@ function paDue(){
  return out;
 }
 const paSlipMonths=()=>Object.keys(S.paie.slips).sort();
+/* Période des statistiques (tableau et courbe) : de paFrom à paTo inclus ; vide = pas de borne. */
+const paRange=()=>paSlipMonths().filter(m=>(!paFrom||m>=paFrom)&&(!paTo||m<=paTo));
 /* Calcul des lignes : fixe = montant saisi ; points = points × valeur annuelle (indice 100) ÷ 100 ÷ 12, tronqué au centime ; taux = taux % × base, la base étant la somme des lignes cochées, les retenues cochées étant retranchées (ex. transfert primes/points), plus les lignes ponctuelles « soumises aux taux » de la fiche si la ligne à taux l'accepte (xp) (plafonnée à x % d'une autre ligne, puis multipliée par un coefficient). ov = montants imposés (saisis à la main) ; les références circulaires comptent 0 (elles sont refusées à la saisie). */
 /* Période payée d'un mois (proratisation) : jours du d au f, base 30 jours ; le dernier jour du mois compte pour le 30. 0 = période invalide. */
 const paDim=ym=>new Date(+ym.slice(0,4),+ym.slice(5,7),0).getDate();
@@ -1046,16 +1048,18 @@ function paDueHTML(){
  return h+'</div>';
 }
 function paTableHTML(){
- const ms=paSlipMonths(),ser=paSeries();
- if(!ms.length)return '<p class="mut">Aucune fiche validée pour l\'instant.</p>';
+ const ms=paRange(),ser=paSeries();
+ if(!paSlipMonths().length)return '<p class="mut">Aucune fiche validée pour l\'instant.</p>';
+ if(!ms.length)return '<p class="mut">Aucune fiche validée sur la période choisie.</p>';
+ paWin=Math.min(paWin,Math.max(0,ms.length-1));
  const e=ms.length-paWin,b=Math.max(0,e-3),cols=ms.slice(b,e);
  let h=`<div class="mnav" style="margin:0 0 6px"><button data-a="pawin" data-d="1" aria-label="Mois plus anciens" ${b===0?'disabled':''}>‹</button><span class="s">${esc(paShort(cols[0]))}${cols.length>1?' → '+esc(paShort(cols[cols.length-1])):''}</span><button data-a="pawin" data-d="-1" aria-label="Mois plus récents" ${paWin===0?'disabled':''}>›</button></div>`;
- const per=cols.length>1?paShort(cols[0])+' → '+paShort(cols[cols.length-1]):paShort(cols[0]);
+ const per=ms.length>1?paShort(ms[0])+' → '+paShort(ms[ms.length-1]):paShort(ms[0]);
  const sum=a=>{const v=a.filter(x=>x!==undefined);return v.length?paFmt(paR2(v.reduce((t,x)=>t+x,0))):'—';};
  h+=`<table class="pa pt"><thead><tr><th class="l"></th>${cols.map(m=>`<th class="n">${esc(paShort(m))}</th>`).join('')}<th class="tc">Total</th></tr></thead><tbody>`;
- const sums=cols.map(m=>paSums(S.paie.slips[m].rows));
+ const sums=cols.map(m=>paSums(S.paie.slips[m].rows)),allSums=ms.map(m=>paSums(S.paie.slips[m].rows));
  /* ligne de total d'un type (gains, retenues) et net calculé, après le dernier de ses lignes */
- const totRow=(label,f)=>`<tr class="pa-st"><td class="l">${label}</td>${sums.map(t=>`<td class="n">${paFmt(f(t))}</td>`).join('')}<td class="tc">${sum(sums.map(f))}</td></tr>`;
+ const totRow=(label,f)=>`<tr class="pa-st"><td class="l">${label}</td>${sums.map(t=>`<td class="n">${paFmt(f(t))}</td>`).join('')}<td class="tc">${sum(allSums.map(f))}</td></tr>`;
  const closing=k=>k==='gain'?totRow('Total des gains',t=>t.brut):k==='ret'?totRow('Total des retenues',t=>t.ret)+totRow('Net calculé',t=>t.net):'';
  let last='';
  ser.forEach(s=>{
@@ -1064,18 +1068,25 @@ function paTableHTML(){
    const v=s.vals[m];if(v===undefined)return '<td class="n mut">—</td>';
    const i=ms.indexOf(m),pv=i>0?s.vals[ms[i-1]]:undefined;
    const ch=pv!==undefined&&Math.abs(pv-v)>=0.005;
-   return `<td class="n${ch?' chg':''}">${paFmt(v)}</td>`;}).join('')}<td class="tc">${sum(cols.map(m=>s.vals[m]))}</td></tr>`;
+   return `<td class="n${ch?' chg':''}">${paFmt(v)}</td>`;}).join('')}<td class="tc">${sum(ms.map(m=>s.vals[m]))}</td></tr>`;
  });
  h+=closing(last);
- return h+`</tbody></table><p class="s">Colonne « Total » : somme des mois affichés (${esc(per)}). Montant en gras et en couleur : différent de la fiche précédente. Montants en euros, tels que sur le bulletin.</p>`;
+ return h+`</tbody></table><p class="s">Colonne « Total » : somme de toute la période choisie (${esc(per)}, ${ms.length} mois), pas seulement des mois visibles. Montant en gras et en couleur : différent de la fiche précédente. Montants en euros, tels que sur le bulletin.</p>`;
+}
+function paRangeHTML(){
+ const all=paSlipMonths();if(all.length<2)return '';
+ const opt=(v,sel)=>all.map(m=>`<option value="${m}"${m===sel?' selected':''}>${esc(monthLabel(m))}</option>`).join('');
+ const a=paFrom||all[0],z=paTo||all[all.length-1],full=!paFrom&&!paTo;
+ return `<div class="card"><b>Période des statistiques</b><p class="s" style="margin:2px 0 8px">Pilote le tableau, la colonne Total et la courbe.</p><div class="pk2"><label>Du<select id="pa_from">${opt(a,a)}</select></label><label>Au<select id="pa_to">${opt(z,z)}</select></label></div><div style="margin-top:8px"><button class="ghost small" data-a="paperall" ${full?'disabled':''}>Toute la période (${all.length} mois)</button></div></div>`;
 }
 function paChartHTML(){
  const ser=paSeries();
  if(!ser.length)return '<p class="mut">La courbe apparaît dès la première fiche validée.</p>';
  if(!ser.some(s=>s.k===paSel))paSel=(ser.find(s=>s.kind==='tot')||ser[0]).k;
  const s=ser.find(x=>x.k===paSel);
- const ms=paSlipMonths().filter(m=>s.vals[m]!==undefined);
+ const ms=paRange().filter(m=>s.vals[m]!==undefined);
  const sel=`<label>Ligne<select id="pa_sel">${ser.map(x=>`<option value="${esc(x.k)}"${x.k===paSel?' selected':''}>${esc(x.label)} (${esc(PA_KINDS[x.kind])})</option>`).join('')}</select></label>`;
+ if(!ms.length)return sel+'<p class="mut">Cette ligne n\'a pas de valeur sur la période choisie.</p>';
  if(paPt<0||paPt>=ms.length)paPt=ms.length-1;
  const idx=m=>{const [y,mm]=m.split('-').map(Number);return y*12+mm;};
  const W=320,H=150,L=46,R=12,T=12,B=24,pw=W-L-R,ph=H-T-B;
@@ -1140,6 +1151,7 @@ function paieHTML(){
  return `<div class="mnav"><button data-a="paieback" aria-label="Retour">‹</button><b>Bulletin de paye</b><span style="width:44px"></span></div>
  <p class="s" style="margin-top:0">Suivi seulement : cette page ne modifie aucun compte, solde ni budget.</p>
  ${paDueHTML()}
+ ${paRangeHTML()}
  ${foldCard('paie-evo','Évolution (tableau)',paTableHTML(),true)}
  ${foldCard('paie-crb','Évolution (courbe)',paChartHTML(),true)}
  ${foldCard('paie-fiches','Fiches validées',paSlipsHTML()+paSkipsHTML(),false)}
@@ -1769,6 +1781,7 @@ function act(a,ds,el){
  else if(a==='pakselend'){paSelK=null;render();}
  else if(a==='pakres'){const ms=paSelK?[...paSelK]:[];if(ms.length){S.paie.skips=S.paie.skips.filter(m=>!paSelK.has(m));paSelK=null;save();render();}}
  else if(a==='paiunskipall'){S.paie.skips=[];save();render();}
+ else if(a==='paperall'){paFrom='';paTo='';paWin=0;paPt=-1;render();}
  else if(a==='pawin'){paWin=Math.max(0,paWin+Number(ds.d));render();}
  else if(a==='paipt'){paPt=Number(ds.i);render();}
  else if(a==='paiaddline')openPaLine(null);
@@ -1812,6 +1825,10 @@ document.addEventListener('change',e=>{
   if(t.value==='rec'&&c.value!=='Revenus'){c.value='Revenus';$(p+'sub').innerHTML=subOptions('Revenus','');}
   if(t.value==='dep'&&c.value==='Revenus'){c.value='Divers';$(p+'sub').innerHTML=subOptions('Divers','Non classé');}
  }
+ else if(t.id==='pa_from'||t.id==='pa_to'){
+  const all=paSlipMonths(),f=$('pa_from').value,z=$('pa_to').value;
+  let a=f,b=z;if(a>b){if(t.id==='pa_from')b=a;else a=b;}
+  paFrom=a===all[0]?'':a;paTo=b===all[all.length-1]?'':b;paWin=0;paPt=-1;render();}
  else if(t.id==='pa_sel'){paSel=t.value;paPt=-1;render();}
  else if(t.id==='r_freq'){$('r_dayw').style.display=t.value==='monthly'?'block':'none';$('r_everyw').style.display=(t.value==='weekly'||t.value==='days')?'block':'none';}
  else if(t.id==='csv'&&t.files[0]){const rd=new FileReader();rd.onload=()=>{let txt=rd.result;onFile(txt);};rd.readAsText(t.files[0],'utf-8');}

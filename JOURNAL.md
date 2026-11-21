@@ -3,6 +3,13 @@
 Journal des opérations réalisées sur le projet, à relire pour savoir où il en est.
 Les entrées les plus récentes sont en haut. À chaque intervention, ajouter une entrée datée.
 
+## 2026-11-21 (soir, suite 2) — Bulletin de paye : choix de la période des statistiques (version 63)
+
+- Demande : « tu n'as pas codé le choix de la période pour les stats ». Constat : en version 62 les flèches ne faisaient que glisser une fenêtre de trois mois, sans vrai choix. Réponses : sélecteurs « du mois X au mois Y », un seul choix pour le tableau et la courbe.
+- Fait : carte **Période des statistiques** (affichée dès deux fiches) avec deux listes « Du » / « Au » (mois des fiches validées) et le bouton « Toute la période ». Si « Du » dépasse « Au », l'autre borne suit. Les bornes égales au premier ou au dernier mois sont stockées vides (= pas de borne, donc les nouvelles fiches entrent seules). Le tableau garde ses trois colonnes visibles, les flèches ne se déplacent plus que dans la période ; la colonne **Total** et les totaux de gains, retenues et net portent désormais sur **toute la période choisie** (plus seulement sur les trois mois visibles). La courbe et l'historique de la ligne se limitent à la période ; message si la ligne n'a aucune valeur sur la période. État non enregistré (`paFrom`, `paTo`), remis à zéro au rechargement.
+- Au passage (sans code) : rapprochement des fiches de juin et juillet 2018 avec le bulletin. Totaux du tableau justes à l'addition. Écart de 23,20 € sur le net = ligne « indemnité compensatrice de CSG » (25,63) encore dans les fiches, absente de ce bulletin si c'est bien celui de juillet ; reste 0,03 € de rappels (71,17 et 85,36 contre 71,16 et 85,34 sur le bulletin), règle d'arrondi inconnue, en attente des lignes de rappel du bulletin.
+- Tests : `test_tableau_totaux` adapté (total sur 5 mois) et étendu (sélecteurs, période réduite, bornes inversées, courbe, retour à toute la période), `test_paie` 334, `test_debordements` 282, `test_sync` 57, sans échec. Service worker `compte-v63`.
+
 ## 2026-11-21 (soir, suite) — Bulletin de paye : totaux dans le tableau d'évolution (version 62)
 
 - Demande : dans le tableau d'évolution, ajouter les totaux par gains et par retenues (« revenus » compris comme « gains » : à confirmer) et afficher le total de la période affichée.
