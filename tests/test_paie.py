@@ -88,7 +88,8 @@ def test_parcours(browser):
     print('Modèle, fiches à valider, tableau et courbe')
     pg = device(browser, FauxSupabase())
     msgs = []
-    pg.on('dialog', lambda d: (msgs.append(d.message), d.accept()))
+    rep_parcours = lambda d: (msgs.append(d.message), d.accept())
+    pg.on('dialog', rep_parcours)
     depart(pg)
     pg.evaluate("() => { S.accounts[0].anchor = { date: '2020-01-01', amount: 1000 }; reanchor(); save(); }")
     avant = pg.evaluate("() => ({ bal: balanceAt(today(), true), tx: S.tx.length, acc: JSON.stringify(S.accounts), rec: S.rec.length, due: dueRange('2000-01-01', '2100-01-01').length })")
@@ -227,7 +228,9 @@ def test_parcours(browser):
     check('« Tout valider » : 3 fiches créées aux montants du modèle, confirmation demandée', len(etat_paie(pg)['slips']) == 3 and msgs and 'Valider 3 mois' in msgs[0], msgs)
     check('plus rien à valider après « Tout valider »', pg.evaluate("() => paDue()") == [])
 
-    # ligne supprimée : fiches conservées
+    # ligne supprimée : fiches conservées (réponse « Annuler » à la question « Retirer aussi des fiches validées ? »)
+    pg.remove_listener('dialog', rep_parcours)
+    pg.on('dialog', lambda d: d.dismiss() if d.message.startswith('Retirer aussi') else d.accept())
     pg.click('[data-a=paiedit][data-id="%s"]' % ids[1])
     pg.click('[data-a=delpaline]')
     e = etat_paie(pg)
@@ -591,7 +594,13 @@ def test_selection_lignes(browser):
     pg = device(browser, FauxSupabase())
     msgs = []
     refus = [False]
-    pg.on('dialog', lambda d: (msgs.append(d.message), d.dismiss() if refus[0] else d.accept()))
+    retire = [False]   # réponse à la question « Retirer aussi des fiches validées ? »
+
+    def rep(d):
+        msgs.append(d.message)
+        ok = retire[0] if d.message.startswith('Retirer aussi') else not refus[0]
+        d.accept() if ok else d.dismiss()
+    pg.on('dialog', rep)
     depart(pg)
     ouvre_paie(pg)
     d0 = mois(pg, -1)
@@ -644,6 +653,126 @@ def test_selection_lignes(browser):
     pg.click('[data-a=paltog][data-id="b"]')
     pg.click('[data-a=paldel]')
     check('suppression d\'une base partagée : base nettoyée, plafond retiré', pg.evaluate("() => S.paie.lines.map((l) => l.label + ':' + (l.base || []).join(',') + ':' + (l.cap ? 1 : 0)).join('|')") == 'A::0|C:a:0|D:a:0', pg.evaluate("() => JSON.stringify(S.paie.lines)"))
+    check('aucune erreur JavaScript', not pg.errors, pg.errors)
+
+
+def test_suppression_fiches_validees(browser):
+    print('Suppression de lignes du modèle : option « retirer aussi des fiches validées »')
+    pg = device(browser, FauxSupabase())
+    msgs = []
+    retire = [True]
+
+    def rep(d):
+        msgs.append(d.message)
+        d.accept() if (retire[0] or not d.message.startswith('Retirer aussi')) else d.dismiss()
+    pg.on('dialog', rep)
+    depart(pg)
+    ouvre_paie(pg)
+    m = mois(pg, -1)
+
+    def prepare():
+        pg.evaluate("""(m) => {
+          const mk = (id, label, kind, amount, extra) => Object.assign({ id, label, kind, amount, start: m, end: '', mode: 'fixed' }, extra || {});
+          S.paie.lines = [mk('t', 'Traitement', 'gain', 2000), mk('a1', 'ACF points', 'gain', 100.93), mk('a2', 'ACF ancien', 'gain', 103.09), mk('c', 'CSG', 'ret', 10, { mode: 'rate', base: ['t', 'a1', 'a2'], coef: 100 })];
+          S.paie.slips = {}; S.paie.slips[m] = { rows: paRowsFromModel(m) };
+          FOLD['paie-mod'] = true; render();
+        }""", m)
+    prepare()
+    csg = lambda: pg.evaluate("(m) => { const r = S.paie.slips[m].rows.find((x) => x.k === 'c'); return r ? r.amount : null; }", m)
+    check('départ : CSG = 10 % de 2204,02 = 220,40', csg() == 220.4, csg())
+    # suppression depuis la fenêtre de la ligne, fiches conservées
+    retire[0] = False
+    pg.click('[data-a=paiedit][data-id="a2"]')
+    pg.click('[data-a=delpaline]')
+    check('deux questions : suppression puis « Retirer aussi des fiches »', any(x.startswith('Supprimer cette ligne') for x in msgs) and msgs[-1].startswith('Retirer aussi') and '1 fiche déjà validée' in msgs[-1], msgs)
+    check('refusé : ligne supprimée du modèle, fiche gardée telle quelle (4 lignes, CSG 220,40)', len(etat_paie(pg)['lines']) == 3 and len(etat_paie(pg)['slips'][m]['rows']) == 4 and csg() == 220.4, etat_paie(pg)['slips'])
+    # accepté : la ligne sort de la fiche, la CSG est recalculée
+    prepare()
+    retire[0] = True
+    msgs.clear()
+    pg.click('[data-a=paiedit][data-id="a2"]')
+    pg.click('[data-a=delpaline]')
+    rows = etat_paie(pg)['slips'][m]['rows']
+    check('accepté : ligne retirée de la fiche (3 lignes)', len(rows) == 3 and not [r for r in rows if r['k'] == 'a2'], rows)
+    check('la CSG de la fiche est recalculée : 10 % de 2100,93 = 210,09', csg() == 210.09, csg())
+    # même chose en sélection multiple
+    prepare()
+    pg.click('[data-a=palsel]')
+    pg.click('[data-a=paltog][data-id="a2"]')
+    pg.click('[data-a=paldel]')
+    check('sélection multiple : question posée et fiche recalculée', any(x.startswith('Retirer aussi') for x in msgs) and csg() == 210.09 and len(etat_paie(pg)['slips'][m]['rows']) == 3, msgs)
+    # aucune fiche ne contient la ligne : pas de seconde question
+    prepare()
+    pg.evaluate("(m) => { S.paie.slips[m].rows = S.paie.slips[m].rows.filter((r) => r.k !== 'a2'); render(); }", m)
+    msgs.clear()
+    pg.click('[data-a=paiedit][data-id="a2"]')
+    pg.click('[data-a=delpaline]')
+    check('ligne absente des fiches : pas de question sur les fiches', not any(x.startswith('Retirer aussi') for x in msgs), msgs)
+    check('aucune erreur JavaScript', not pg.errors, pg.errors)
+
+
+def test_ponctuelles_taux(browser):
+    print('Lignes ponctuelles « soumises aux taux »')
+    pg = device(browser, FauxSupabase())
+    msgs = []
+    pg.on('dialog', lambda d: (msgs.append(d.message), d.accept()))
+    depart(pg)
+    ouvre_paie(pg)
+    m = mois(pg, -1)
+    pg.evaluate("""(m) => {
+      const mk = (id, label, kind, amount, extra) => Object.assign({ id, label, kind, amount, start: m, end: '', mode: 'fixed' }, extra || {});
+      S.paie.lines = [mk('t', 'Traitement', 'gain', 2000), mk('c1', 'CSG', 'ret', 10, { mode: 'rate', base: ['t'], coef: 100, xp: true }), mk('c2', 'CRDS', 'ret', 5, { mode: 'rate', base: ['t'], coef: 100 })];
+      S.paie.slips = {}; render();
+    }""", m)
+    val = lambda k: pg.evaluate("(k) => parseAmount(document.querySelector('#modal .pa-a[data-k=\"' + k + '\"]').value)", k)
+    pg.evaluate("(m) => openSlip(m)", m)
+    check('départ : CSG 200, CRDS 100', val('c1') == 200 and val('c2') == 100, (val('c1'), val('c2')))
+    pg.click('[data-a=paaddx]')
+    check('case « Soumise aux taux » sur la ligne ponctuelle, décochée au départ', pg.locator('#modal .pa-xr').count() == 1 and not pg.is_checked('#modal .pa-xr'))
+    pg.fill('#modal .pa-xl', 'Prime test')
+    pg.fill('#modal .pa-xa', '100')
+    check('prime non cochée : bases inchangées', val('c1') == 200 and val('c2') == 100)
+    pg.check('#modal .pa-xr')
+    check('prime cochée : CSG (ligne qui l\'accepte) passe à 210, CRDS (qui ne l\'accepte pas) reste à 100', val('c1') == 210 and val('c2') == 100, (val('c1'), val('c2')))
+    pg.select_option('#modal .pa-xk', 'ret')
+    check('même ponctuelle en retenue : retranchée de la base (CSG 190)', val('c1') == 190, val('c1'))
+    pg.select_option('#modal .pa-xk', 'gain')
+    pg.fill('#modal .pa-xa', '50')
+    check('montant modifié : CSG recalculée en direct (205)', val('c1') == 205, val('c1'))
+    pg.click('#modal .pa-x [data-a=paxdel]')
+    check('ponctuelle supprimée avec ✕ : CSG revient à 200', val('c1') == 200, val('c1'))
+    pg.click('[data-a=paaddx]')
+    pg.fill('#modal .pa-xl', 'Prime test')
+    pg.fill('#modal .pa-xa', '100')
+    pg.check('#modal .pa-xr')
+    pg.click('[data-a=saveslip]')
+    rows = etat_paie(pg)['slips'][m]['rows']
+    px = [r for r in rows if r['k'].startswith('x:')]
+    check('fiche enregistrée : ponctuelle marquée « rated », CSG 210', len(px) == 1 and px[0].get('rated') is True and [r['amount'] for r in rows if r['k'] == 'c1'] == [210], rows)
+    pg.evaluate("(m) => openSlip(m)", m)
+    check('fiche rouverte : la case reste cochée', pg.is_checked('#modal .pa-xr'))
+    pg.evaluate("() => { S.paie.lines.find((l) => l.id === 'c2').xp = true; }")
+    pg.click('[data-a=parecalc]')
+    check('ligne qui accepte désormais les ponctuelles : CRDS = 5 % de 2100 = 105 après « Recalculer »', val('c2') == 105, val('c2'))
+    pg.click('[data-a=closem]')
+    # fiche validée recalculée côté code (changement de valeur du point, de base…) : la ponctuelle cochée reste prise en compte
+    pg.evaluate("(m) => paRecalcMonth(m)", m)
+    check('recalcul d\'une fiche validée : la ponctuelle cochée est incluse (CSG 210, CRDS 105)', pg.evaluate("(m) => S.paie.slips[m].rows.filter((r) => r.k === 'c1' || r.k === 'c2').map((r) => r.amount).join(',')", m) == '210,105', etat_paie(pg)['slips'][m]['rows'])
+    # fenêtre d'une ligne à taux : case « inclure », cochée par défaut pour une nouvelle ligne, décochée pour une ligne existante
+    pg.evaluate("() => { FOLD['paie-mod'] = true; render(); }")
+    pg.click('[data-a=paiaddline]')
+    pg.select_option('#pl_mode', 'rate')
+    check('nouvelle ligne à taux : « Inclure les lignes ponctuelles » cochée par défaut', pg.is_checked('#pl_xp'))
+    pg.click('[data-a=closem]')
+    pg.evaluate("() => { delete S.paie.lines.find((l) => l.id === 'c2').xp; render(); }")
+    pg.click('[data-a=paiedit][data-id="c2"]')
+    check('ligne à taux existante sans le réglage : case décochée (aucun changement de ses montants)', not pg.is_checked('#pl_xp'))
+    pg.check('#pl_xp')
+    msgs.clear()
+    pg.click('[data-a=savepaline]')
+    check('cocher la case est un changement de structure : proposition de recalculer les fiches', any('Recalculer cette ligne' in x for x in msgs), msgs)
+    check('réglage enregistré et fiche recalculée (CRDS 105)', pg.evaluate("() => S.paie.lines.find((l) => l.id === 'c2').xp") is True and pg.evaluate("(m) => S.paie.slips[m].rows.find((r) => r.k === 'c2').amount", m) == 105)
+    check('résumé du modèle : « + ponctuelles soumises »', 'ponctuelles soumises' in pg.inner_text('#app'))
     check('aucune erreur JavaScript', not pg.errors, pg.errors)
 
 
@@ -900,6 +1029,8 @@ def main():
         test_propagation(browser)
         test_selection_suppression(browser)
         test_selection_lignes(browser)
+        test_suppression_fiches_validees(browser)
+        test_ponctuelles_taux(browser)
         test_ligne_dans_fiches_existantes(browser)
         test_net_calcule(browser)
         test_totaux_fiche(browser)

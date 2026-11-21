@@ -3,6 +3,14 @@
 Journal des opérations réalisées sur le projet, à relire pour savoir où il en est.
 Les entrées les plus récentes sont en haut. À chaque intervention, ajouter une entrée datée.
 
+## 2026-11-21 (reprise) — Bulletin de paye : suppression dans les fiches validées, ponctuelles soumises aux taux (version 54)
+
+- Réponses de l'utilisateur : (1) oui pour l'option « supprimer aussi des fiches validées » ; (2) rien à coder sur l'écart du bulletin 3 (« non c'est bon ») ; (3c) oui à la case « soumise aux taux » par ponctuelle, pour garder le détail d'une correction sur une ligne séparée sans fausser la base. (3a) et (3b) (supprimer une fiche = l'ignorer ; sélection en masse dans « À valider » et « Mois ignorés ») : l'utilisateur répond « je ne sais pas, je verrai au fur et à mesure » ; **non codés**, question reposée.
+- Suppression de lignes du modèle (unitaire ou en sélection) : après la confirmation, si des fiches validées contiennent ces lignes, une seconde question propose de les en retirer aussi (OK = retirer, Annuler = fiches conservées). En cas de retrait, les lignes à taux qui avaient la ligne en base ou en plafond (CSG…) sont recalculées dans ces fiches (`paDelLines(ids, inSlips)`, `paAskSlips`, `paSlipsWith`). Sert à nettoyer le doublon ACF (103,09).
+- Ponctuelles soumises aux taux : case « Soumise aux taux (CSG, CRDS…) » sur chaque ligne ponctuelle (champ `rated` de la ligne de fiche) ; réglage « Inclure les lignes ponctuelles soumises aux taux » (`xp`) sur chaque ligne à taux, coché par défaut pour une **nouvelle** ligne, décoché pour les lignes existantes (leurs montants ne changent donc pas : à cocher sur CSG déductible, non déductible et CRDS). Une ponctuelle gain s'ajoute à la base, une ponctuelle retenue s'en retranche ; le plafond et le coefficient s'appliquent ensuite. Recalcul en direct dans la fenêtre de fiche, et dans `paRecalcMonth` (la fiche validée garde ses ponctuelles cochées). Changer `xp` compte comme un changement de structure (proposition de recalculer les fiches).
+- Tests : `test_paie` 262 vérifications (2 nouvelles fonctions : `test_suppression_fiches_validees`, `test_ponctuelles_taux` ; `test_selection_lignes` et `test_parcours` adaptés à la nouvelle question), 11 suites vertes. Service worker `compte-v54`.
+- À vérifier sur appareil : suppression de l'ancienne ligne ACF 103,09 avec retrait des fiches (CSG non déductible attendue 47,75 sur le bulletin concerné), puis cocher « Inclure les lignes ponctuelles » sur les lignes à taux voulues.
+
 ## 2026-11-21 (suite) — Bulletin de paye : supprimer vite une ligne ponctuelle (version 53)
 
 - Demande : supprimer une ligne ponctuelle (prime) sans devoir vider son libellé.
