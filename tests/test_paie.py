@@ -88,7 +88,8 @@ def test_parcours(browser):
     print('Modèle, fiches à valider, tableau et courbe')
     pg = device(browser, FauxSupabase())
     msgs = []
-    rep_parcours = lambda d: (msgs.append(d.message), d.accept())
+    ign = [False]   # réponse à « Ignorer aussi ce mois ? »
+    rep_parcours = lambda d: (msgs.append(d.message), d.accept() if (ign[0] or not d.message.startswith('Ignorer aussi')) else d.dismiss())
     pg.on('dialog', rep_parcours)
     depart(pg)
     pg.evaluate("() => { S.accounts[0].anchor = { date: '2020-01-01', amount: 1000 }; reanchor(); save(); }")
@@ -221,7 +222,11 @@ def test_parcours(browser):
     # supprimer une fiche et valider en bloc
     pg.evaluate("(m) => openSlip(m)", m2)
     pg.click('[data-a=delslip]')
-    check('fiche supprimée (confirmation acceptée)', m2 not in etat_paie(pg)['slips'] and pg.evaluate("() => paDue()") == [m2])
+    check('fiche supprimée, « Annuler » à la question « Ignorer aussi » : le mois revient à valider', m2 not in etat_paie(pg)['slips'] and pg.evaluate("() => paDue()") == [m2] and m2 not in etat_paie(pg)['skips'] and any(x.startswith('Ignorer aussi ce mois') for x in msgs), msgs)
+    ign[0] = True
+    pg.evaluate("(m) => { S.paie.slips[m] = { rows: [{ k: S.paie.lines[0].id, label: 'x', kind: 'gain', amount: 1 }] }; render(); openSlip(m); }", m2)
+    pg.click('[data-a=delslip]')
+    check('fiche supprimée, « OK » à la question « Ignorer aussi » : mois ignoré, plus à valider', m2 not in etat_paie(pg)['slips'] and m2 in etat_paie(pg)['skips'] and m2 not in pg.evaluate("() => paDue()"), etat_paie(pg)['skips'])
     pg.evaluate("() => { S.paie.slips = {}; S.paie.skips = []; render(); }")
     msgs.clear()
     pg.click('[data-a=paiall]')
@@ -230,7 +235,9 @@ def test_parcours(browser):
 
     # ligne supprimée : fiches conservées (réponse « Annuler » à la question « Retirer aussi des fiches validées ? »)
     pg.remove_listener('dialog', rep_parcours)
-    pg.on('dialog', lambda d: d.dismiss() if d.message.startswith('Retirer aussi') else d.accept())
+    ign[0] = False
+    rep_suite = lambda d: (msgs.append(d.message), d.dismiss() if d.message.startswith(('Retirer aussi', 'Ignorer aussi')) else d.accept())
+    pg.on('dialog', rep_suite)
     pg.click('[data-a=paiedit][data-id="%s"]' % ids[1])
     pg.click('[data-a=delpaline]')
     e = etat_paie(pg)
@@ -352,7 +359,13 @@ def test_selection_suppression(browser):
     pg = device(browser, FauxSupabase())
     msgs = []
     refus = [False]
-    pg.on('dialog', lambda d: (msgs.append(d.message), d.dismiss() if refus[0] else d.accept()))
+    ignore = [False]   # réponse à la question « Ignorer aussi ces mois ? »
+
+    def rep(d):
+        msgs.append(d.message)
+        ok = ignore[0] if d.message.startswith('Ignorer aussi') else not refus[0]
+        d.accept() if ok else d.dismiss()
+    pg.on('dialog', rep)
     depart(pg)
     ouvre_paie(pg)
     mm = {k: mois(pg, k) for k in range(-4, 2)}
@@ -385,6 +398,18 @@ def test_selection_suppression(browser):
     check('sortie du mode sélection après suppression', pg.locator('[data-a=paisel]').count() == 1 and pg.locator('[data-a=paidel]').count() == 0)
     check('les mois supprimés reviennent dans « À valider »', pg.evaluate("() => paDue()") == [mm[-3], mm[0]], pg.evaluate("() => paDue()"))
     check('le modèle est intact', len(e['lines']) == 1 and e['lines'][0]['amount'] == 1000)
+    check('question « Ignorer aussi ces 2 mois » posée, refusée : aucun mois ignoré', any(x.startswith('Ignorer aussi ces 2 mois') for x in msgs) and e['skips'] == [], msgs)
+    # suppression en masse avec « supprimer et ignorer »
+    ignore[0] = True
+    pg.click('[data-a=paisel]')
+    pg.click('[data-a=paitog][data-m="%s"]' % mm[-4])
+    pg.click('[data-a=paitog][data-m="%s"]' % mm[-2])
+    pg.click('[data-a=paidel]')
+    e = etat_paie(pg)
+    check('« supprimer et ignorer » : les 2 mois sont ignorés, non remis à valider', sorted(e['skips']) == [mm[-4], mm[-2]] and mm[-4] not in e['slips'] and mm[-2] not in e['slips'] and mm[-4] not in pg.evaluate("() => paDue()") and mm[-2] not in pg.evaluate("() => paDue()"), (e['skips'], pg.evaluate("() => paDue()")))
+    check('les mois ignorés apparaissent dans « Mois ignorés »', pg.locator('[data-a=paiunskip]').count() == 2)
+    ignore[0] = False
+    pg.evaluate("(m) => { S.paie.skips = []; S.paie.slips[m] = { rows: [{ k: S.paie.lines[0].id, label: 'Brut', kind: 'gain', amount: 1000 }] }; render(); }", mm[-2])
     # annuler la sélection, puis quitter la page en cours de sélection
     pg.click('[data-a=paisel]')
     pg.click('[data-a=paitog][data-m="%s"]' % mm[-2])

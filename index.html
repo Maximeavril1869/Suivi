@@ -123,7 +123,7 @@ const KEY='compte-salaire-v1';
 /* Épargne bloquée et Bien : comptent dans le patrimoine net seulement. Jamais dans le reste à vivre, le budget du jour, les soldes des comptes cochés ni « Sortir du découvert », et on n'y saisit pas de lignes : on met à jour leur valeur (solde de référence). */
 const ILLIQ={bloque:1,bien:1};
 const isLiquid=a=>!ILLIQ[a.type];
-const APP_VERSION='54';   // identique au numéro de la constante V de sw.js (compte-v54) : à incrémenter ensemble à chaque livraison
+const APP_VERSION='55';   // identique au numéro de la constante V de sw.js (compte-v55) : à incrémenter ensemble à chaque livraison
 const CATS={
  'Revenus':['Salaire','Primes','Remboursements','Intérêts','Autres revenus'],
  'Logement':['Loyer / crédit','Charges','Énergie','Internet / téléphone','Assurance habitation','Travaux / mobilier'],
@@ -930,6 +930,9 @@ function paRecalcMonth(m,ids){
  const c=paCompute(m,ov,paXsOf(sl.rows));
  sl.rows.forEach(r=>{if(upd.has(r.k))r.amount=c[r.k];});
 }
+/* Supprime des fiches validées ; ignore = les mois ne reviennent pas dans « À valider » (ils vont dans « Mois ignorés »), sinon ils y reviennent tant que le modèle les couvre. */
+function paDelSlips(ms,ignore){ms.forEach(m=>{delete S.paie.slips[m];if(ignore&&!S.paie.skips.includes(m))S.paie.skips.push(m);});}
+function paAskIgnore(n){return confirm('Ignorer aussi '+(n>1?'ces '+n+' mois':'ce mois')+' ?\n\nOK = supprimer et ignorer (pas de retour dans « À valider », modifiable dans « Mois ignorés ») · Annuler = supprimer et remettre à valider.');}
 function paRecalcSlips(from,ids){Object.keys(S.paie.slips).filter(m=>m>=from).forEach(m=>paRecalcMonth(m,ids));}
 function paCycle(lines){
  const by=Object.fromEntries(lines.map(l=>[l.id,l])),st={};
@@ -1085,7 +1088,7 @@ function paSlipsHTML(){
  const sm=paSelM;
  let h='';
  if(sm){
-  h+=`<p class="s" style="margin-top:0">Touche les fiches à supprimer. Un mois supprimé revient dans « À valider » tant que le modèle le couvre.</p><div class="btns" style="margin-bottom:6px"><button class="ghost small" data-a="paiselall">${sm.size===ms.length?'Tout désélectionner':'Tout sélectionner'}</button><button class="ghost small" data-a="paiselend">Annuler</button><button class="danger small" data-a="paidel" ${sm.size?'':'disabled'}>Supprimer (${sm.size})</button></div>`;
+  h+=`<p class="s" style="margin-top:0">Touche les fiches à supprimer. À la suppression, tu choisis de remettre les mois à valider ou de les ignorer.</p><div class="btns" style="margin-bottom:6px"><button class="ghost small" data-a="paiselall">${sm.size===ms.length?'Tout désélectionner':'Tout sélectionner'}</button><button class="ghost small" data-a="paiselend">Annuler</button><button class="danger small" data-a="paidel" ${sm.size?'':'disabled'}>Supprimer (${sm.size})</button></div>`;
  }else h+=`<div style="text-align:right;margin-bottom:4px"><button class="ghost small" data-a="paisel">Sélectionner</button></div>`;
  return h+ms.slice().reverse().map(m=>{
   const rows=S.paie.slips[m].rows,on=sm&&sm.has(m),ok=rows.some(r=>r.kind==='gain');
@@ -1690,7 +1693,7 @@ function act(a,ds,el){
  else if(a==='palselall'){const ids=S.paie.lines.map(l=>l.id);paSelL=paSelL&&paSelL.size===ids.length?new Set():new Set(ids);render();}
  else if(a==='palselend'){paSelL=null;render();}
  else if(a==='paldel'){const n=paSelL?paSelL.size:0;if(n&&confirm('Supprimer '+n+' ligne'+(n>1?'s':'')+' du modèle ?')){const e=paDelLines(paSelL,paAskSlips(paSelL));if(e){alert(e);return;}paSelL=null;save();render();}}
- else if(a==='paidel'){const n=paSelM?paSelM.size:0;if(n&&confirm('Supprimer '+n+' fiche'+(n>1?'s':'')+' de paye ? Les mois supprimés reviendront dans « À valider ».')){paSelM.forEach(m=>{delete S.paie.slips[m];});paSelM=null;save();render();}}
+ else if(a==='paidel'){const n=paSelM?paSelM.size:0;if(n&&confirm('Supprimer '+n+' fiche'+(n>1?'s':'')+' de paye ?')){paDelSlips([...paSelM],paAskIgnore(n));paSelM=null;save();render();}}
  else if(a==='openpaie'){sel=null;paSelM=null;paSelL=null;view='paie';window.scrollTo(0,0);render();}
  else if(a==='paieback'){paSelM=null;paSelL=null;view='rec';window.scrollTo(0,0);render();}
  else if(a==='paiopen'||a==='paislip')openSlip(ds.m);
@@ -1714,7 +1717,7 @@ function act(a,ds,el){
  else if(a==='saveslip')saveSlip();
  else if(a==='paipropag')paPropagApply();
  else if(a==='paipback'){const st=txCtx.pstash;openSlip(st.ym,st.rows);}
- else if(a==='delslip'){if(confirm('Supprimer la fiche de '+monthLabel(txCtx.pm)+' ?')){delete S.paie.slips[txCtx.pm];save();closeModal();render();}}
+ else if(a==='delslip'){if(confirm('Supprimer la fiche de '+monthLabel(txCtx.pm)+' ?')){paDelSlips([txCtx.pm],paAskIgnore(1));save();closeModal();render();}}
  else if(a==='editpay')openPay(ds.m);
  else if(a==='savepay')savePay();
  else if(a==='resetpay'){if(S.payDates)delete S.payDates[txCtx.pm];save();closeModal();render();}
