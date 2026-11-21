@@ -3,6 +3,12 @@
 Journal des opérations réalisées sur le projet, à relire pour savoir où il en est.
 Les entrées les plus récentes sont en haut. À chaque intervention, ajouter une entrée datée.
 
+## 2026-11-21 (reprise, suite 2) — Bulletin de paye : recalculer toutes les fiches validées (version 56)
+
+- Constat sur captures de l'utilisateur : dans une fiche, CSG non déductible à 137,28 alors que le modèle donne 47,75 (2,4 % × 98,25 % × 2 024,97) ; les autres lignes à taux sont cohérentes ; « tous les mois sont touchés ». Hypothèse : fiches validées qui gardent d'anciens montants calculés (aucun recalcul global n'existait, seulement fiche par fiche ou à la modification d'une ligne). Cause non confirmée : si la valeur reste fausse après le nouveau bouton, regarder l'historique daté (`hist`) de la ligne « CSG non déductible » (ancien taux).
+- Fait : bouton « Recalculer toutes les fiches validées » en bas du modèle (visible s'il y a une ligne calculée et au moins une fiche), `paRecalcAll()` : confirmation, recalcul de toutes les lignes calculées de toutes les fiches (fixes et ponctuelles intactes), compte rendu du nombre de montants modifiés. Service worker `compte-v56`. `test_paie` 273 vérifications.
+- Question ouverte : « les supprimer définitivement » (mois ignorés ? fiches ? lignes ?) en attente de précision.
+
 ## 2026-11-21 (reprise, suite) — Bulletin de paye : supprimer une fiche et ignorer le mois (version 55)
 
 - Demande (proposition de Claude acceptée par l'utilisateur) : à la suppression d'une fiche, choisir entre « remettre à valider » et « supprimer et ignorer », pour ne plus ignorer les mois un par un. Valable en suppression unitaire (fenêtre de la fiche) et en masse (sélection).

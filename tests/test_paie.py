@@ -801,6 +801,36 @@ def test_ponctuelles_taux(browser):
     check('aucune erreur JavaScript', not pg.errors, pg.errors)
 
 
+def test_recalcul_toutes_fiches(browser):
+    print('Recalculer toutes les fiches validées')
+    pg = device(browser, FauxSupabase())
+    msgs = []
+    pg.on('dialog', lambda d: (msgs.append(d.message), d.accept()))
+    depart(pg)
+    ouvre_paie(pg)
+    m0, m1 = mois(pg, -1), mois(pg, 0)
+    pg.evaluate("""([m0, m1]) => {
+      const mk = (id, label, kind, amount, extra) => Object.assign({ id, label, kind, amount, start: m0, end: '', mode: 'fixed' }, extra || {});
+      S.paie.lines = [mk('t', 'Traitement', 'gain', 2000), mk('p', 'Prime', 'gain', 100), mk('c', 'CSG non déductible', 'ret', 2.4, { mode: 'rate', base: ['t', 'p'], coef: 98.25 })];
+      const row = (k, label, kind, amount) => ({ k, label, kind, amount });
+      S.paie.slips = {};
+      [m0, m1].forEach((m) => { S.paie.slips[m] = { rows: [row('t', 'Traitement', 'gain', 2000), row('p', 'Prime', 'gain', 100), row('c', 'CSG non déductible', 'ret', 137.28)] }; });
+      FOLD['paie-mod'] = true; render();
+    }""", [m0, m1])
+    check('bouton « Recalculer toutes les fiches validées » présent', pg.locator('[data-a=parecalcall]').count() == 1)
+    pg.click('[data-a=parecalcall]')
+    csg = pg.evaluate("() => Object.values(S.paie.slips).map((s) => s.rows.find((r) => r.k === 'c').amount)")
+    check('CSG de toutes les fiches recalculée : 2,4 % de 98,25 % × 2100 = 49,52', csg == [49.52, 49.52], csg)
+    check('lignes fixes inchangées', pg.evaluate("() => Object.values(S.paie.slips).every((s) => s.rows.find((r) => r.k === 't').amount === 2000 && s.rows.find((r) => r.k === 'p').amount === 100)"))
+    check('confirmation puis compte rendu : 2 montants modifiés', any(x.startswith('Recalculer les lignes calculées des 2 fiches') for x in msgs) and msgs[-1] == '2 montants modifiés.', msgs)
+    msgs.clear()
+    pg.click('[data-a=parecalcall]')
+    check('second passage : aucun montant modifié', msgs[-1].startswith('Aucun montant modifié'), msgs)
+    pg.evaluate("() => { S.paie.slips = {}; render(); }")
+    check('sans fiche validée : pas de bouton', pg.locator('[data-a=parecalcall]').count() == 0)
+    check('aucune erreur JavaScript', not pg.errors, pg.errors)
+
+
 def test_point_acf(browser):
     print('Valeur du point ACF : saisie, ligne « points ACF », valeur datée')
     pg = device(browser, FauxSupabase())
@@ -1056,6 +1086,7 @@ def main():
         test_selection_lignes(browser)
         test_suppression_fiches_validees(browser)
         test_ponctuelles_taux(browser)
+        test_recalcul_toutes_fiches(browser)
         test_ligne_dans_fiches_existantes(browser)
         test_net_calcule(browser)
         test_totaux_fiche(browser)
