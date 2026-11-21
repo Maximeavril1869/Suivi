@@ -123,7 +123,7 @@ const KEY='compte-salaire-v1';
 /* Épargne bloquée et Bien : comptent dans le patrimoine net seulement. Jamais dans le reste à vivre, le budget du jour, les soldes des comptes cochés ni « Sortir du découvert », et on n'y saisit pas de lignes : on met à jour leur valeur (solde de référence). */
 const ILLIQ={bloque:1,bien:1};
 const isLiquid=a=>!ILLIQ[a.type];
-const APP_VERSION='56';   // identique au numéro de la constante V de sw.js (compte-v56) : à incrémenter ensemble à chaque livraison
+const APP_VERSION='57';   // identique au numéro de la constante V de sw.js (compte-v57) : à incrémenter ensemble à chaque livraison
 const CATS={
  'Revenus':['Salaire','Primes','Remboursements','Intérêts','Autres revenus'],
  'Logement':['Loyer / crédit','Charges','Énergie','Internet / téléphone','Assurance habitation','Travaux / mobilier'],
@@ -1253,6 +1253,7 @@ function openPaLine(id){
   <div class="pk2"><input id="pl_cappct" inputmode="decimal" placeholder="% (vide = aucun)" value="${d.cap?esc(paNum(d.cap.pct)):''}"><select id="pl_capline"><option value="">de la ligne…</option>${oth.map(o=>`<option value="${esc(o.id)}"${d.cap&&d.cap.line===o.id?' selected':''}>${esc(o.label)}</option>`).join('')}</select></div>
  </div>
  ${l?`<div id="pl_fromw" style="display:none"><label>Nouveau montant à partir du mois de${paPick('pl_from',monthOf(today()))}</label><label>Motif (facultatif : échelon, grade…)<input id="pl_note" placeholder="ex. Passage à l'échelon 5"></label><p class="s" style="margin-top:-6px">Ce mois et les suivants prennent la nouvelle valeur, fiches déjà validées comprises. Les mois d'avant gardent l'ancienne.</p></div>`:''}
+ ${l&&l.hist&&l.hist.length?`<details class="fold" data-fold="paie-lh"${foldOpen('paie-lh',true)?' open':''} style="margin:8px 0"><summary>Historique des valeurs (${l.hist.length})</summary><p class="s" style="margin:6px 0">Valeur appliquée à partir de chaque mois. Une entrée ancienne avec une mauvaise valeur fausse les fiches de ces mois : supprime-la, les fiches de la ligne sont alors recalculées.</p>${l.hist.map((e,i)=>`<div class="row"><div class="m"><div class="l">${e.from==='0000-00'?'Au départ':'À partir de '+esc(paShort(e.from))}</div>${e.note?`<div class="s">${esc(e.note)}</div>`:''}</div><div class="a">${esc(paNum(e.amount))}</div><button type="button" class="ghost small" data-a="pahistdel" data-i="${i}" aria-label="Supprimer cette entrée" style="flex:none;margin-left:6px">✕</button></div>`).join('')}</details>`:''}
  <label>Première fiche${paPick('pl_start',d.start)}</label>
  <label>Dernière fiche (facultatif)${paPick('pl_end',d.end,true)}</label>
  <div class="btns"><button class="ghost" data-a="closem">Annuler</button><button class="primary" data-a="savepaline">Enregistrer</button></div>
@@ -1716,6 +1717,7 @@ function act(a,ds,el){
  else if(a==='paacf')openPaPt('acf');
  else if(a==='savepapt')savePaPt();
  else if(a==='parecalc')paRecalcForm();
+ else if(a==='pahistdel'){const l=S.paie.lines.find(x=>x.id===txCtx.plid),i=Number(ds.i);if(l&&l.hist&&l.hist[i]&&confirm('Supprimer cette entrée de l\'historique ? Les fiches de la ligne seront recalculées (lignes calculées).')){l.hist.splice(i,1);if(!l.hist.length)delete l.hist;l.amount=paAmt(l,monthOf(today()));if(paIsCalc(l))paRecalcSlips('0000-00',new Set([l.id]));save();openPaLine(l.id);render();}}
  else if(a==='parecalcall'){const n=paSlipMonths().length;if(n&&confirm('Recalculer les lignes calculées des '+n+' fiche'+(n>1?'s':'')+' validée'+(n>1?'s':'')+' d\'après le modèle ? Un montant calculé corrigé à la main dans une fiche sera remplacé.')){const c=paRecalcAll();save();render();alert(c?c+' montant'+(c>1?'s':'')+' modifié'+(c>1?'s':'')+'.':'Aucun montant modifié : les fiches étaient déjà à jour.');}}
  else if(a==='paiedit')openPaLine(ds.id);
  else if(a==='savepaline')savePaLine();

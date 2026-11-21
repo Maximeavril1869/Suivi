@@ -828,6 +828,20 @@ def test_recalcul_toutes_fiches(browser):
     check('second passage : aucun montant modifié', msgs[-1].startswith('Aucun montant modifié'), msgs)
     pg.evaluate("() => { S.paie.slips = {}; render(); }")
     check('sans fiche validée : pas de bouton', pg.locator('[data-a=parecalcall]').count() == 0)
+    # historique daté d'une ligne à taux : un ancien taux fausse les anciens mois, même après recalcul
+    pg.evaluate("""([m0, m1]) => {
+      const c = S.paie.lines.find((l) => l.id === 'c');
+      c.hist = [{ from: '0000-00', amount: 6.9 }, { from: m1, amount: 2.4 }];
+      const row = (k, label, kind, amount) => ({ k, label, kind, amount });
+      S.paie.slips = {}; S.paie.slips[m0] = { rows: [row('t', 'Traitement', 'gain', 2000), row('p', 'Prime', 'gain', 100), row('c', 'CSG non déductible', 'ret', 1)] };
+      render();
+    }""", [m0, m1])
+    pg.click('[data-a=parecalcall]')
+    check('ancien taux dans l\'historique : le recalcul garde la valeur fausse (6,9 % → 142,36)', pg.evaluate("(m) => S.paie.slips[m].rows.find((r) => r.k === 'c').amount", m0) == 142.36, pg.evaluate("(m) => S.paie.slips[m].rows.find((r) => r.k === 'c').amount", m0))
+    pg.click('[data-a=paiedit][data-id="c"]')
+    check('fenêtre de la ligne : historique visible avec 2 entrées', pg.locator('#modal [data-a=pahistdel]').count() == 2 and 'Au départ' in pg.inner_text('#modal'))
+    pg.click('#modal [data-a=pahistdel][data-i="0"]')
+    check('entrée de départ supprimée : fiche recalculée au taux de 2,4 % (49,52), historique à 1 entrée', pg.evaluate("(m) => S.paie.slips[m].rows.find((r) => r.k === 'c').amount", m0) == 49.52 and pg.locator('#modal [data-a=pahistdel]').count() == 1, pg.evaluate("(m) => S.paie.slips[m].rows.find((r) => r.k === 'c').amount", m0))
     check('aucune erreur JavaScript', not pg.errors, pg.errors)
 
 

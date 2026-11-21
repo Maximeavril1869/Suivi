@@ -3,6 +3,12 @@
 Journal des opérations réalisées sur le projet, à relire pour savoir où il en est.
 Les entrées les plus récentes sont en haut. À chaque intervention, ajouter une entrée datée.
 
+## 2026-11-21 (reprise, suite 3) — Bulletin de paye : historique daté visible et supprimable (version 57)
+
+- Retour de l'utilisateur : le recalcul (fiche ou global) « n'a rien changé », CSG non déductible à 137,28 au lieu de 47,75 sur tous les mois. Les deux boutons passent par `paCompute` : la valeur est donc bien celle que donne le calcul pour ces mois. Hypothèse (non confirmée) : un ancien taux dans l'historique daté `hist` de la ligne (`paAmt(l, mois)`), invisible jusqu'ici dans l'app.
+- Fait : fenêtre d'une ligne du modèle → menu « Historique des valeurs (N) » (« Au départ » / « À partir de mois »), bouton ✕ par entrée (confirmation, recalcul des fiches de la ligne si elle est calculée, `pahistdel`). Service worker `compte-v57`. `test_paie` 276 vérifications.
+- À confirmer avec l'utilisateur : ce que montre l'historique de « CSG non déductible ».
+
 ## 2026-11-21 (reprise, suite 2) — Bulletin de paye : recalculer toutes les fiches validées (version 56)
 
 - Constat sur captures de l'utilisateur : dans une fiche, CSG non déductible à 137,28 alors que le modèle donne 47,75 (2,4 % × 98,25 % × 2 024,97) ; les autres lignes à taux sont cohérentes ; « tous les mois sont touchés ». Hypothèse : fiches validées qui gardent d'anciens montants calculés (aucun recalcul global n'existait, seulement fiche par fiche ou à la modification d'une ligne). Cause non confirmée : si la valeur reste fausse après le nouveau bouton, regarder l'historique daté (`hist`) de la ligne « CSG non déductible » (ancien taux).
