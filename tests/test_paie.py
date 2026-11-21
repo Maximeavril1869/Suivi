@@ -907,6 +907,63 @@ def test_bulletin_reel(browser):
     check('aucune erreur JavaScript', not pg.errors, pg.errors)
 
 
+def test_proratisation(browser):
+    print('Proratisation : période payée du … au … (base 30 jours)')
+    pg = device(browser, FauxSupabase())
+    msgs = []
+    pg.on('dialog', lambda d: (msgs.append(d.message), d.accept()))
+    depart(pg)
+    ouvre_paie(pg)
+    m = mois(pg, -1)
+    pg.evaluate("""(m) => {
+      const mk = (id, label, kind, amount, extra) => Object.assign({ id, label, kind, amount, start: m, end: '', mode: 'fixed' }, extra || {});
+      S.paie.pt = { amount: 5623.23, hist: [] };
+      S.paie.lines = [mk('t', 'Traitement brut', 'gain', 328, { mode: 'points' }), mk('p', 'Prime', 'gain', 106.76), mk('r', 'Retenue fixe', 'ret', 21.35), mk('c', 'CSG déductible', 'ret', 6.8, { mode: 'rate', base: ['t', 'p'], coef: 98.25 })];
+      S.paie.slips = {}; render(); openSlip(m);
+    }""", m)
+    val = lambda k: pg.evaluate("(k) => parseAmount(document.querySelector('#modal .pa-a[data-k=\"' + k + '\"]').value)", k)
+    check('mois complet au départ : 1537,01 / 106,76 / 21,35 / CSG 100,24', (val('t'), val('p'), val('r')) == (1537.01, 106.76, 21.35) and 'Mois complet' in pg.inner_text('#pa_q'), (val('t'), val('p'), val('r')))
+    pg.fill('#pa_d', '11')
+    check('du 11 au dernier jour : 20 jours sur 30, traitement 1024,67 (proratisé avant de tronquer)', val('t') == 1024.67 and '20 jours sur 30' in pg.inner_text('#pa_q'), (val('t'), pg.inner_text('#pa_q')))
+    check('lignes fixes proratisées (prime 71,17, retenue 14,23)', (val('p'), val('r')) == (71.17, 14.23), (val('p'), val('r')))
+    check('ligne à taux : suit la base proratisée (CSG déd. 73,21)', val('c') == 73.21, val('c'))
+    pg.fill('#pa_f', '31') if pg.evaluate("(m) => paDim(m)", m) == 31 else pg.fill('#pa_f', str(pg.evaluate("(m) => paDim(m)", m)))
+    check('« au » = dernier jour du mois (28, 30 ou 31) : toujours 20 jours', val('t') == 1024.67, val('t'))
+    pg.fill('#pa_f', '31')
+    pg.fill('#pa_d', '10')
+    pg.fill('#pa_f', '30')
+    pg.fill('#pa_d', '10')
+    check('du 10 au 30 : 21 jours, traitement 1075,91, prime 74,73', (val('t'), val('p')) == (1075.91, 74.73), (val('t'), val('p')))
+    pg.fill('#pa_d', '20')
+    pg.fill('#pa_f', '5')
+    check('période invalide (début après fin) : message, enregistrement refusé', 'invalide' in pg.inner_text('#pa_q'))
+    pg.click('[data-a=saveslip]')
+    check('enregistrement refusé avec une alerte', any('Période payée invalide' in x for x in msgs) and m not in etat_paie(pg)['slips'], msgs)
+    pg.fill('#pa_d', '11')
+    pg.fill('#pa_f', '')
+    pg.fill('#modal .pa-a[data-k="r"]', '15')
+    pg.fill('#pa_d', '11')
+    check('montant fixe saisi à la main : conservé', val('r') == 15)
+    pg.click('[data-a=saveslip]')
+    s = etat_paie(pg)['slips'][m]
+    rows = {x['k']: x['amount'] for x in s['rows']}
+    check('fiche enregistrée avec sa période (jour 11) et ses montants proratisés', s.get('pr', {}).get('d') == 11 and rows['t'] == 1024.67 and rows['p'] == 71.17 and rows['c'] == 73.21, s)
+    check('mois proratisé : aucune question de propagation, le modèle reste intact', not any('mois suivants' in x for x in msgs) and pg.evaluate("() => S.paie.lines.find((l) => l.id === 'p').amount") == 106.76 and 'Appliquer aux mois suivants' not in pg.inner_text('body'))
+    # la valeur du point change : recalcul de la fiche validée, quotité conservée
+    pg.evaluate("(m) => { S.paie.pt = { amount: 5700, hist: [] }; paRecalcMonth(m); }", m)
+    v = pg.evaluate("(m) => S.paie.slips[m].rows.find((r) => r.k === 't').amount", m)
+    check('recalcul d\'une fiche proratisée : quotité 20/30 conservée (5700 → 1038,66)', v == 1038.66, v)
+    pg.evaluate("() => { S.paie.pt = { amount: 5623.23, hist: [] }; }")
+    # retour à un mois complet
+    pg.evaluate("(m) => openSlip(m)", m)
+    check('fiche rouverte : jour de début 11 affiché, 20 jours sur 30', pg.input_value('#pa_d') == '11' and '20 jours sur 30' in pg.inner_text('#pa_q'))
+    pg.fill('#pa_d', '')
+    check('retour au mois complet : traitement 1537,01, prime 106,76, retenue saisie à la main (15) conservée', (val('t'), val('p'), val('r')) == (1537.01, 106.76, 15.0), (val('t'), val('p'), val('r')))
+    pg.click('[data-a=saveslip]')
+    check('mois complet enregistré : plus de période dans la fiche', 'pr' not in etat_paie(pg)['slips'][m], etat_paie(pg)['slips'][m])
+    check('aucune erreur JavaScript', not pg.errors, pg.errors)
+
+
 def test_point_acf(browser):
     print('Valeur du point ACF : saisie, ligne « points ACF », valeur datée')
     pg = device(browser, FauxSupabase())
@@ -1164,6 +1221,7 @@ def main():
         test_ponctuelles_taux(browser)
         test_recalcul_toutes_fiches(browser)
         test_bulletin_reel(browser)
+        test_proratisation(browser)
         test_ligne_dans_fiches_existantes(browser)
         test_net_calcule(browser)
         test_totaux_fiche(browser)

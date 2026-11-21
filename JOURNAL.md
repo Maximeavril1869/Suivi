@@ -3,6 +3,15 @@
 Journal des opérations réalisées sur le projet, à relire pour savoir où il en est.
 Les entrées les plus récentes sont en haut. À chaque intervention, ajouter une entrée datée.
 
+## 2026-11-21 (après-midi, suite) — Bulletin de paye : proratisation d'un mois (version 59)
+
+- Demande : reprendre l'historique depuis la toute première fiche (juin 2018, entrée le 11, brut 1 024,67 = 2/3 de 1 537,01). Constat : le brut se retrouve en proratisant le **montant** avant de tronquer (328 pts × 5 623,23 ÷ 12 × 20/30 = 1 024,6775 → 1 024,67) ; arrondir les points (218,67) donne 1 024,69, d'où l'écart observé.
+- Réponses de l'utilisateur : période saisie par date de début / date de fin (11 au 30 = 20 jours) ; proratisation de tout ce qui ne vient pas d'un taux ; servira aussi pour une maladie.
+- Fait : bloc « Période payée » (du … au …) en haut de la fenêtre d'une fiche, en jours du mois, **base 30 jours** (le dernier jour du mois, 28 à 31, compte pour le 30 ; `paDays`, `paQ`, `paDim`). Quotité = jours ÷ 30, appliquée par `paCompute(ym, ov, xs, q)` aux lignes points (avant troncature), ACF (avant arrondi) et fixes (arrondi normal) ; les lignes à taux suivent la base proratisée (RAFP : plafond calculé sur le traitement proratisé). Les lignes ponctuelles ne sont pas proratisées. La période est conservée dans la fiche (`slips[m].pr = {d, f}`, absente si mois complet) et respectée par `paRecalcMonth`.
+- Comportement : changer la période met à jour les lignes fixes encore au montant du modèle × ancienne quotité (un montant saisi à la main reste), et recalcule les lignes calculées ; une période invalide (début après fin, hors du mois) bloque l'enregistrement ; **un mois proratisé ne pose jamais la question de propagation** au modèle.
+- Tests : `test_proratisation` (20 jours, 21 jours, fin de mois, invalide, saisie manuelle conservée, recalcul avec nouvelle valeur du point, retour au mois complet), `test_paie` 307 vérifications, service worker `compte-v59`.
+- Non fait : indicateur de période dans la liste des fiches, case « non proratisée » par ligne.
+
 ## 2026-11-21 (après-midi) — Bulletin de paye : montants négatifs dans les fiches (version 58)
 
 - Demande : l'utilisateur n'arrive pas à retrouver les montants d'un bulletin réel (CSG déd. 138,55 ; non déd. 48,90 ; CRDS 10,19 ; RAFP 15,37). Analyse du bulletin : base de CSG/CRDS = 2 073,79 = gains 2 064,51 (dont « rappel indemnité compensatrice CSG année courante » 25,62) **plus** 9,28, le « transfert primes/points » étant **négatif** (−9,28), donc une retenue négative qui élargit la base. RAFP : base plafonnée à 20 % du traitement (307,40 × 5 % = 15,37).

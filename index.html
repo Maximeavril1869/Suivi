@@ -123,7 +123,7 @@ const KEY='compte-salaire-v1';
 /* Épargne bloquée et Bien : comptent dans le patrimoine net seulement. Jamais dans le reste à vivre, le budget du jour, les soldes des comptes cochés ni « Sortir du découvert », et on n'y saisit pas de lignes : on met à jour leur valeur (solde de référence). */
 const ILLIQ={bloque:1,bien:1};
 const isLiquid=a=>!ILLIQ[a.type];
-const APP_VERSION='58';   // identique au numéro de la constante V de sw.js (compte-v58) : à incrémenter ensemble à chaque livraison
+const APP_VERSION='59';   // identique au numéro de la constante V de sw.js (compte-v59) : à incrémenter ensemble à chaque livraison
 const CATS={
  'Revenus':['Salaire','Primes','Remboursements','Intérêts','Autres revenus'],
  'Logement':['Loyer / crédit','Charges','Énergie','Internet / téléphone','Assurance habitation','Travaux / mobilier'],
@@ -896,22 +896,26 @@ function paDue(){
 }
 const paSlipMonths=()=>Object.keys(S.paie.slips).sort();
 /* Calcul des lignes : fixe = montant saisi ; points = points × valeur annuelle (indice 100) ÷ 100 ÷ 12, tronqué au centime ; taux = taux % × base, la base étant la somme des lignes cochées, les retenues cochées étant retranchées (ex. transfert primes/points), plus les lignes ponctuelles « soumises aux taux » de la fiche si la ligne à taux l'accepte (xp) (plafonnée à x % d'une autre ligne, puis multipliée par un coefficient). ov = montants imposés (saisis à la main) ; les références circulaires comptent 0 (elles sont refusées à la saisie). */
-function paCompute(ym,ov,xs){
- ov=ov||{};xs=xs||[];const L=S.paie.lines,by=Object.fromEntries(L.map(l=>[l.id,l])),memo={},busy={};
+/* Période payée d'un mois (proratisation) : jours du d au f, base 30 jours ; le dernier jour du mois compte pour le 30. 0 = période invalide. */
+const paDim=ym=>new Date(+ym.slice(0,4),+ym.slice(5,7),0).getDate();
+function paDays(ym,d,f){const dim=paDim(ym);d=d||1;f=f||dim;if(d<1||f>dim||d>f)return 0;return Math.max(1,Math.min(30,(f>=dim?30:f)-Math.min(d,30)+1));}
+const paQ=(ym,pr)=>pr?Math.min(1,paDays(ym,pr.d,pr.f)/30):1;
+function paCompute(ym,ov,xs,q){
+ ov=ov||{};xs=xs||[];q=q===undefined?1:q;const L=S.paie.lines,by=Object.fromEntries(L.map(l=>[l.id,l])),memo={},busy={};
  const get=id=>{
   if(id in memo)return memo[id];
   const l=by[id];if(!l||busy[id])return 0;
   if(ov[id]!==undefined)return memo[id]=ov[id];
   busy[id]=1;let v;const mode=l.mode||'fixed';
-  if(mode==='points')v=paTrunc(paAmt(S.paie.pt,ym)*paAmt(l,ym)/12);
-  else if(mode==='acf')v=paRnd(paAmt(S.paie.acf,ym)*paAmt(l,ym)*100/12);
+  if(mode==='points')v=paTrunc(paAmt(S.paie.pt,ym)*paAmt(l,ym)/12*q);   // proratisé avant de tronquer (328 pts × 2/3 → 1024,67)
+  else if(mode==='acf')v=paRnd(paAmt(S.paie.acf,ym)*paAmt(l,ym)*100/12*q);
   else if(mode==='rate'){
    let b=(l.base||[]).reduce((t,i)=>by[i]&&paActive(by[i],ym)?t+(by[i].kind==='ret'?-1:1)*get(i):t,0);
    if(l.xp)b+=xs.reduce((t,x)=>t+(x.kind==='ret'?-1:1)*x.amount,0);   // lignes ponctuelles cochées « soumise aux taux » (gain ajouté, retenue retranchée)
    if(l.cap&&by[l.cap.line])b=Math.min(b,get(l.cap.line)*l.cap.pct/100);
    b=b*(l.coef===undefined?100:l.coef)/100;
    v=paR2(b*paAmt(l,ym)/100);
-  }else v=paAmt(l,ym);
+  }else v=q<1?paR2(paAmt(l,ym)*q):paAmt(l,ym);   // ligne fixe proratisée ; les lignes à taux suivent leur base
   busy[id]=0;return memo[id]=v;
  };
  L.forEach(l=>get(l.id));return memo;
@@ -927,7 +931,7 @@ function paRecalcMonth(m,ids){
   const r=sl.rows.find(x=>x.k===l.id);
   if(paIsCalc(l)&&paActive(l,m)&&r&&(!ids||ids.has(l.id)))upd.add(l.id);else ov[l.id]=r?r.amount:0;
  });
- const c=paCompute(m,ov,paXsOf(sl.rows));
+ const c=paCompute(m,ov,paXsOf(sl.rows),paQ(m,sl.pr));
  sl.rows.forEach(r=>{if(upd.has(r.k))r.amount=c[r.k];});
 }
 /* Supprime des fiches validées ; ignore = les mois ne reviennent pas dans « À valider » (ils vont dans « Mois ignorés »), sinon ils y reviennent tant que le modèle les couvre. */
@@ -1135,8 +1139,8 @@ function paieHTML(){
 function paXRow(r){
  return `<div class="pa-x" data-k="${esc(r.k||'')}" data-l="${esc(r.label||'')}"><div style="display:flex;gap:8px;align-items:center"><input class="pa-xl" style="flex:1;min-width:0" placeholder="Libellé (ex. Prime exceptionnelle)" value="${esc(r.label||'')}"><button type="button" class="ghost small" data-a="paxdel" aria-label="Supprimer cette ligne ponctuelle" style="flex:none">✕</button></div><div class="pk2"><select class="pa-xk">${Object.keys(PA_KINDS).map(k=>`<option value="${k}"${(r.kind||'gain')===k?' selected':''}>${PA_KINDS[k]}</option>`).join('')}</select><input class="pa-xa" inputmode="decimal" placeholder="Montant" value="${r.amount===undefined||r.amount===''?'':esc(paNum(r.amount))}"></div><label class="pbx"><input type="checkbox" class="pa-xr"${r.rated?' checked':''}>Soumise aux taux (CSG, CRDS…) <span class="s">· entre dans la base des lignes à taux qui l'acceptent</span></label></div>`;
 }
-function openSlip(ym,over){
- const old=S.paie.slips[ym],isNew=!old;
+function openSlip(ym,over,prOver){
+ const old=S.paie.slips[ym],isNew=!old,pr=prOver!==undefined?prOver:(old?old.pr:null),q0=paQ(ym,pr);
  const ids=new Set(S.paie.lines.map(l=>l.id));
  let rows=over?over.map(r=>Object.assign({},r)):old?old.rows.map(r=>Object.assign({},r)):paRowsFromModel(ym);
  const model=[],extra=rows.filter(r=>!ids.has(r.k));
@@ -1148,6 +1152,9 @@ function openSlip(ym,over){
  openModal(`<h3>Bulletin de ${esc(monthLabel(ym))}</h3>
  ${!isNew&&old.rows.some(r=>r.kind==='gain')?`<p style="margin:-4px 0 8px"><b>Net calculé : ${paFmt(paNet(old.rows))} €</b> <span class="s">(gains − retenues)</span></p>`:''}
  <p class="s" style="margin-top:-6px">${isNew?'Montants du modèle : corrige ce qui a changé. ':''}Laisse un champ vide si la ligne n'existe pas ce mois-ci. Les lignes « calculées » se mettent à jour quand tu changes une ligne fixe d'une nouvelle fiche ; tu peux aussi les corriger à la main. Si tu changes un montant fixe, l'app te demandera s'il vaut aussi pour les mois suivants.</p>
+ <label>Période payée <span class="s">· jours du mois, base 30 (vide = mois complet)</span></label>
+ <div style="display:flex;gap:8px;align-items:center;margin-bottom:2px"><span>du</span><input id="pa_d" class="pa-p" inputmode="numeric" placeholder="1" value="${pr&&pr.d>1?pr.d:''}"><span>au</span><input id="pa_f" class="pa-p" inputmode="numeric" placeholder="${paDim(ym)}" value="${pr&&pr.f<paDim(ym)?pr.f:''}"></div>
+ <p class="s" id="pa_q" data-q="${q0}" style="margin-top:0">${q0<1?Math.round(q0*30)+' jours sur 30 · lignes fixes, points et ACF proratisés':'Mois complet'}</p>
  ${model.map(r=>{const l=ids.has(r.k)?S.paie.lines.find(x=>x.id===r.k):null,c=l&&paIsCalc(l);return `<label>${esc(r.label)} <span class="s">· ${esc(PA_KINDS[r.kind])}${c?' · calculé':''}</span><input class="pa-a" data-k="${esc(r.k)}" data-c="${c?1:0}" data-man="${c&&isNew&&!over?0:1}" inputmode="decimal" value="${r.amount===''?'':esc(paNum(r.amount))}"></label>`;}).join('')}
  ${S.paie.lines.some(paIsCalc)?'<button class="ghost" style="width:100%;margin-bottom:10px" data-a="parecalc">Recalculer les lignes calculées</button>':''}
  <b style="display:block;margin:6px 0">Lignes ponctuelles (prime…)</b>
@@ -1161,8 +1168,26 @@ function paLive(src){
  if(src&&src.dataset.c==='1')src.dataset.man='1';
  els.forEach(el=>{if(el.dataset.man==='1'){const a=parseAmount(el.value.trim()||'0');ov[el.dataset.k]=isNaN(a)?0:paR2(a);}});
  const xs=[...document.querySelectorAll('#modal .pa-x')].filter(x=>x.querySelector('.pa-xr').checked).map(x=>{const a=parseAmount(x.querySelector('.pa-xa').value.trim()||'0');return{kind:x.querySelector('.pa-xk').value,amount:isNaN(a)?0:paR2(a)};});
- const c=paCompute(ym,ov,xs);
+ const c=paCompute(ym,ov,xs,paFormQ());
  els.forEach(el=>{if(el.dataset.man!=='1')el.value=paNum(c[el.dataset.k]);});
+}
+/* Quotité lue dans la fenêtre de fiche (1 = mois complet ; période invalide : 1). */
+function paFormQ(){const d=$('pa_d'),f=$('pa_f');if(!d||!f)return 1;const n=paDays(txCtx.pm,parseInt(d.value,10)||0,parseInt(f.value,10)||0);return n?Math.min(1,n/30):1;}
+/* Changement de période : les lignes fixes encore au montant du modèle × ancienne quotité suivent la nouvelle quotité (un montant saisi à la main n'est pas touché) ; les lignes calculées se recalculent. */
+function paPeriod(){
+ const ym=txCtx.pm,box=$('pa_q'),n=paDays(ym,parseInt($('pa_d').value,10)||0,parseInt($('pa_f').value,10)||0);
+ if(!n){box.textContent='Période invalide : jours entre 1 et '+paDim(ym)+', début avant fin.';return;}
+ const q=Math.min(1,n/30),qo=Number(box.dataset.q);
+ box.textContent=n<30?n+' jours sur 30 · lignes fixes, points et ACF proratisés':'Mois complet';
+ if(q!==qo){
+  document.querySelectorAll('#modal .pa-a[data-c="0"]').forEach(el=>{
+   const l=S.paie.lines.find(x=>x.id===el.dataset.k),cur=parseAmount(el.value.trim());
+   if(l&&!isNaN(cur)&&Math.abs(cur-paR2(paAmt(l,ym)*qo))<0.005)el.value=paNum(paR2(paAmt(l,ym)*q));
+  });
+  document.querySelectorAll('#modal .pa-a[data-c="1"]').forEach(el=>{el.dataset.man='0';});   // changer la période = recalculer les lignes calculées
+  box.dataset.q=q;
+ }
+ paLive(null);
 }
 function paRecalcForm(){
  document.querySelectorAll('#modal .pa-a[data-c="1"]').forEach(el=>{el.dataset.man='0';});
@@ -1192,18 +1217,22 @@ function saveSlip(){
  }
  if(!rows.length){alert('Aucun montant saisi.');return;}
  // montants du modèle changés ce mois-ci : pour une fiche existante, on compare à sa valeur d'avant ; pour une nouvelle, au montant du modèle
+ const dd=parseInt($('pa_d').value,10)||0,ff=parseInt($('pa_f').value,10)||0,days=paDays(ym,dd,ff);
+ if(!days){alert('Période payée invalide : jours entre 1 et '+paDim(ym)+', début avant fin.');return;}
+ const pr=days<30?{d:dd||1,f:ff||paDim(ym)}:null,q=days<30?days/30:1;
  const before=S.paie.slips[ym],changed=[];
  rows.forEach(r=>{
   const l=byId[r.k];if(!l||!paActive(l,ym))return;
   if(paIsCalc(l))return;
+  if(q<1)return;   // mois proratisé : jamais de propagation au modèle
   const prev=before?before.rows.find(x=>x.k===r.k):null,base=prev?prev.amount:paAmt(l,ym);
-  if(Math.abs(r.amount-base)>=0.005)changed.push({k:l.id,label:l.label,old:base,amt:r.amount,later:paLaterSlips(l.id,ym).filter(m=>m>ym).length});
+  if(Math.abs(r.amount-base)>=0.005&&Math.abs(r.amount-paAmt(l,ym))>=0.005)changed.push({k:l.id,label:l.label,old:base,amt:r.amount,later:paLaterSlips(l.id,ym).filter(m=>m>ym).length});
  });
- if(changed.length){txCtx.pstash={ym,rows,changed};openPropag();return;}
- paCommit(ym,rows);
+ if(changed.length){txCtx.pstash={ym,rows,changed,pr};openPropag();return;}
+ paCommit(ym,rows,false,pr);
 }
-function paCommit(ym,rows,recalc){
- S.paie.slips[ym]={rows};S.paie.skips=S.paie.skips.filter(m=>m!==ym);
+function paCommit(ym,rows,recalc,pr){
+ S.paie.slips[ym]={rows};if(pr)S.paie.slips[ym].pr=pr;S.paie.skips=S.paie.skips.filter(m=>m!==ym);
  if(recalc)paRecalcSlips(addMonths(ym,1));
  save();closeModal();render();
 }
@@ -1216,14 +1245,14 @@ function openPropag(){
  <div class="btns"><button class="ghost" data-a="paipback">Retour</button><button class="primary" data-a="paipropag">Enregistrer</button></div>`);
 }
 function paPropagApply(){
- const {ym,rows,changed}=txCtx.pstash,note=$('pp_note').value.trim();let any=false;
+ const {ym,rows,changed,pr}=txCtx.pstash,note=$('pp_note').value.trim();let any=false;
  changed.forEach((c,i)=>{
   const el=document.querySelector('#modal input[name=pp_'+i+']:checked');
   if(!el||el.value!=='from')return;
   const l=S.paie.lines.find(x=>x.id===c.k);if(!l)return;
   paApply(l,ym,c.amt,note,l.amount);any=true;
  });
- paCommit(ym,rows,any);
+ paCommit(ym,rows,any,pr);
 }
 const PA_MODES={fixed:'Montant fixe',points:'Nombre de points (× valeur du point d\'indice)',acf:'Nombre de points ACF (× valeur du point ACF)',rate:'Taux appliqué à une base'};
 function paModeUI(){
@@ -1734,7 +1763,7 @@ function act(a,ds,el){
  else if(a==='paaddx'){$('pa_x').insertAdjacentHTML('beforeend',paXRow({kind:'gain'}));}
  else if(a==='saveslip')saveSlip();
  else if(a==='paipropag')paPropagApply();
- else if(a==='paipback'){const st=txCtx.pstash;openSlip(st.ym,st.rows);}
+ else if(a==='paipback'){const st=txCtx.pstash;openSlip(st.ym,st.rows,st.pr);}
  else if(a==='delslip'){if(confirm('Supprimer la fiche de '+monthLabel(txCtx.pm)+' ?')){paDelSlips([txCtx.pm],paAskIgnore(1));save();closeModal();render();}}
  else if(a==='editpay')openPay(ds.m);
  else if(a==='savepay')savePay();
@@ -1750,7 +1779,7 @@ function act(a,ds,el){
  else if(a==='wipe'){if(confirm('Effacer toutes les données ?')&&confirm('Dernière confirmation : action irréversible.')){S=defaultState();save();render();}}
 }
 document.addEventListener('click',e=>{const el=e.target.closest('[data-a]');if(el){if(el.tagName==='LABEL')return;act(el.dataset.a,el.dataset,el);}});
-document.addEventListener('input',e=>{if(e.target.classList&&e.target.classList.contains('pa-a')){paLive(e.target);return;}if(e.target.classList&&(e.target.classList.contains('pa-xa')||e.target.classList.contains('pa-xk')||e.target.classList.contains('pa-xr'))){paLive(null);return;}if(e.target.id==='s'){search=e.target.value;pruneSel();refreshList();}else if(e.target.id==='r_amt'){const w=$('r_fromw');if(w)w.style.display='block';fromInfo();}else if(e.target.id==='r_from')fromInfo();else if(e.target.id==='pl_amt'){const w=$('pl_fromw');if(w)w.style.display='block';}});
+document.addEventListener('input',e=>{if(e.target.classList&&e.target.classList.contains('pa-a')){paLive(e.target);return;}if(e.target.classList&&e.target.classList.contains('pa-p')){paPeriod();return;}if(e.target.classList&&(e.target.classList.contains('pa-xa')||e.target.classList.contains('pa-xk')||e.target.classList.contains('pa-xr'))){paLive(null);return;}if(e.target.id==='s'){search=e.target.value;pruneSel();refreshList();}else if(e.target.id==='r_amt'){const w=$('r_fromw');if(w)w.style.display='block';fromInfo();}else if(e.target.id==='r_from')fromInfo();else if(e.target.id==='pl_amt'){const w=$('pl_fromw');if(w)w.style.display='block';}});
 document.addEventListener('change',e=>{
  const t=e.target;
  if(t.id==='pl_mode')paModeUI();
