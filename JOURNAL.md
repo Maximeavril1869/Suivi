@@ -3,6 +3,11 @@
 Journal des opérations réalisées sur le projet, à relire pour savoir où il en est.
 Les entrées les plus récentes sont en haut. À chaque intervention, ajouter une entrée datée.
 
+## 2026-11-21 (après-midi, suite 2) — Bulletin de paye : menu « Mois ignorés » repliable (version 60)
+
+- Demande : un menu pour refermer « Mois ignorés ». Fait : la section est un menu repliable imbriqué dans « Fiches validées » (`details[data-fold="paie-skips"]`), titre « Mois ignorés (N) », ouvert par défaut, état ouvert/fermé gardé sur l'appareil (`FOLD`, comme les autres menus). Sélection et boutons « Remettre à valider » inchangés.
+- Tests : `test_paie` 311 vérifications (ouvert par défaut, fermeture, état conservé après un nouvel affichage, réouverture). `test_replis` reste instable (1 échec sur 3 ou 4 passages, constaté aussi sur la version 59 sans ce changement) : cause à examiner à part, sans lien avec la paie. Service worker `compte-v60`.
+
 ## 2026-11-21 (après-midi, suite) — Bulletin de paye : proratisation d'un mois (version 59)
 
 - Demande : reprendre l'historique depuis la toute première fiche (juin 2018, entrée le 11, brut 1 024,67 = 2/3 de 1 537,01). Constat : le brut se retrouve en proratisant le **montant** avant de tronquer (328 pts × 5 623,23 ÷ 12 × 20/30 = 1 024,6775 → 1 024,67) ; arrondir les points (218,67) donne 1 024,69, d'où l'écart observé.

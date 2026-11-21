@@ -123,7 +123,7 @@ const KEY='compte-salaire-v1';
 /* Épargne bloquée et Bien : comptent dans le patrimoine net seulement. Jamais dans le reste à vivre, le budget du jour, les soldes des comptes cochés ni « Sortir du découvert », et on n'y saisit pas de lignes : on met à jour leur valeur (solde de référence). */
 const ILLIQ={bloque:1,bien:1};
 const isLiquid=a=>!ILLIQ[a.type];
-const APP_VERSION='59';   // identique au numéro de la constante V de sw.js (compte-v59) : à incrémenter ensemble à chaque livraison
+const APP_VERSION='60';   // identique au numéro de la constante V de sw.js (compte-v60) : à incrémenter ensemble à chaque livraison
 const CATS={
  'Revenus':['Salaire','Primes','Remboursements','Intérêts','Autres revenus'],
  'Logement':['Loyer / crédit','Charges','Énergie','Internet / téléphone','Assurance habitation','Travaux / mobilier'],
@@ -1123,7 +1123,7 @@ function paSkipsHTML(){
  if(paSelK)paSelK=new Set([...paSelK].filter(m=>sk.includes(m)));
  const sm=paSelK;
  const bar=sm?`<p class="s" style="margin:2px 0 6px">Touche les mois à remettre dans « À valider ».</p><div class="btns" style="margin-bottom:6px"><button class="ghost small" data-a="pakselall">${sm.size===sk.length?'Tout désélectionner':'Tout sélectionner'}</button><button class="ghost small" data-a="pakselend">Annuler</button><button class="primary small" data-a="pakres" ${sm.size?'':'disabled'}>Remettre à valider (${sm.size})</button></div>`:(sk.length>1?'<div style="text-align:right;margin:4px 0"><button class="ghost small" data-a="paksel">Sélectionner</button></div>':'');
- return `<div style="margin-top:12px"><b>Mois ignorés</b><p class="s" style="margin-top:2px">Ces mois ne sont ni à valider ni validés. Remets-les dans « À valider » pour les saisir.</p>${bar}${sk.map(m=>sm?`<div class="row" data-a="paktog" data-m="${m}"><div style="font-size:20px;width:28px;flex:none" aria-hidden="true">${sm.has(m)?'☑':'☐'}</div><div class="m"><div class="l">${esc(monthLabel(m))}</div></div></div>`:`<div class="row"><div class="m"><div class="l">${esc(monthLabel(m))}</div></div><div class="a"><button class="ghost small" data-a="paiunskip" data-m="${m}">Remettre à valider</button></div></div>`).join('')}${sk.length>1&&!sm?`<div style="margin-top:8px"><button class="ghost" style="width:100%" data-a="paiunskipall">Tout remettre à valider (${sk.length} mois)</button></div>`:''}</div>`;
+ return `<details class="fold" data-fold="paie-skips"${foldOpen('paie-skips',true)?' open':''} style="margin-top:12px"><summary><b>Mois ignorés (${sk.length})</b></summary><p class="s" style="margin-top:6px">Ces mois ne sont ni à valider ni validés. Remets-les dans « À valider » pour les saisir.</p>${bar}${sk.map(m=>sm?`<div class="row" data-a="paktog" data-m="${m}"><div style="font-size:20px;width:28px;flex:none" aria-hidden="true">${sm.has(m)?'☑':'☐'}</div><div class="m"><div class="l">${esc(monthLabel(m))}</div></div></div>`:`<div class="row"><div class="m"><div class="l">${esc(monthLabel(m))}</div></div><div class="a"><button class="ghost small" data-a="paiunskip" data-m="${m}">Remettre à valider</button></div></div>`).join('')}${sk.length>1&&!sm?`<div style="margin-top:8px"><button class="ghost" style="width:100%" data-a="paiunskipall">Tout remettre à valider (${sk.length} mois)</button></div>`:''}</details>`;
 }
 function paieHTML(){
  return `<div class="mnav"><button data-a="paieback" aria-label="Retour">‹</button><b>Bulletin de paye</b><span style="width:44px"></span></div>
