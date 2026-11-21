@@ -123,7 +123,7 @@ const KEY='compte-salaire-v1';
 /* Épargne bloquée et Bien : comptent dans le patrimoine net seulement. Jamais dans le reste à vivre, le budget du jour, les soldes des comptes cochés ni « Sortir du découvert », et on n'y saisit pas de lignes : on met à jour leur valeur (solde de référence). */
 const ILLIQ={bloque:1,bien:1};
 const isLiquid=a=>!ILLIQ[a.type];
-const APP_VERSION='52';   // identique au numéro de la constante V de sw.js (compte-v52) : à incrémenter ensemble à chaque livraison
+const APP_VERSION='53';   // identique au numéro de la constante V de sw.js (compte-v53) : à incrémenter ensemble à chaque livraison
 const CATS={
  'Revenus':['Salaire','Primes','Remboursements','Intérêts','Autres revenus'],
  'Logement':['Loyer / crédit','Charges','Énergie','Internet / téléphone','Assurance habitation','Travaux / mobilier'],
@@ -1105,7 +1105,7 @@ function paieHTML(){
 
 /* --- fenêtres --- */
 function paXRow(r){
- return `<div class="pa-x" data-k="${esc(r.k||'')}" data-l="${esc(r.label||'')}"><input class="pa-xl" placeholder="Libellé (ex. Prime exceptionnelle)" value="${esc(r.label||'')}"><div class="pk2"><select class="pa-xk">${Object.keys(PA_KINDS).map(k=>`<option value="${k}"${(r.kind||'gain')===k?' selected':''}>${PA_KINDS[k]}</option>`).join('')}</select><input class="pa-xa" inputmode="decimal" placeholder="Montant" value="${r.amount===undefined||r.amount===''?'':esc(paNum(r.amount))}"></div></div>`;
+ return `<div class="pa-x" data-k="${esc(r.k||'')}" data-l="${esc(r.label||'')}"><div style="display:flex;gap:8px;align-items:center"><input class="pa-xl" style="flex:1;min-width:0" placeholder="Libellé (ex. Prime exceptionnelle)" value="${esc(r.label||'')}"><button type="button" class="ghost small" data-a="paxdel" aria-label="Supprimer cette ligne ponctuelle" style="flex:none">✕</button></div><div class="pk2"><select class="pa-xk">${Object.keys(PA_KINDS).map(k=>`<option value="${k}"${(r.kind||'gain')===k?' selected':''}>${PA_KINDS[k]}</option>`).join('')}</select><input class="pa-xa" inputmode="decimal" placeholder="Montant" value="${r.amount===undefined||r.amount===''?'':esc(paNum(r.amount))}"></div></div>`;
 }
 function openSlip(ym,over){
  const old=S.paie.slips[ym],isNew=!old;
@@ -1615,7 +1615,7 @@ function onFile(text){
  if(map.payee===undefined){const l=map.label,d=map.date;let py=guessCol(header,/tiers|b[ée]n[ée]ficiaire|payee|commer[cç]ant|marchand|merchant|contrepartie|[ée]metteur|nom/i);if(py===l||py===d)py=-1;map=Object.assign({},map,{payee:py});}
  imp={header,data,sig,map,acc:(map.acc&&accById(map.acc))?map.acc:defAcc()};render();
 }
-function act(a,ds){
+function act(a,ds,el){
  if(a.indexOf('sync-')===0){syncAct(a);return;}
  if(a==='nav'){sel=null;view=ds.v;window.scrollTo(0,0);render();}
  else if(a==='prev'){shiftPeriod(-1);pruneSel();render();}
@@ -1690,6 +1690,7 @@ function act(a,ds){
  else if(a==='paiedit')openPaLine(ds.id);
  else if(a==='savepaline')savePaLine();
  else if(a==='delpaline'){if(confirm('Supprimer cette ligne du modèle ? Les fiches déjà validées sont conservées.')){const e=paDelLines(new Set([txCtx.plid]));if(e){alert(e);return;}save();closeModal();render();}}
+ else if(a==='paxdel'){const x=el&&el.closest('.pa-x');if(x)x.remove();}   // retire la ligne ponctuelle de la fenêtre ; effectif à l'enregistrement de la fiche
  else if(a==='paaddx'){$('pa_x').insertAdjacentHTML('beforeend',paXRow({kind:'gain'}));}
  else if(a==='saveslip')saveSlip();
  else if(a==='paipropag')paPropagApply();
@@ -1708,7 +1709,7 @@ function act(a,ds){
  else if(a==='addbudget'){const v=parseAmount($('b_amt').value);if(!(v>0)){alert('Montant invalide.');return;}S.budgets[$('b_key').value]=v;save();render();}
  else if(a==='wipe'){if(confirm('Effacer toutes les données ?')&&confirm('Dernière confirmation : action irréversible.')){S=defaultState();save();render();}}
 }
-document.addEventListener('click',e=>{const el=e.target.closest('[data-a]');if(el){if(el.tagName==='LABEL')return;act(el.dataset.a,el.dataset);}});
+document.addEventListener('click',e=>{const el=e.target.closest('[data-a]');if(el){if(el.tagName==='LABEL')return;act(el.dataset.a,el.dataset,el);}});
 document.addEventListener('input',e=>{if(e.target.classList&&e.target.classList.contains('pa-a')){paLive(e.target);return;}if(e.target.id==='s'){search=e.target.value;pruneSel();refreshList();}else if(e.target.id==='r_amt'){const w=$('r_fromw');if(w)w.style.display='block';fromInfo();}else if(e.target.id==='r_from')fromInfo();else if(e.target.id==='pl_amt'){const w=$('pl_fromw');if(w)w.style.display='block';}});
 document.addEventListener('change',e=>{
  const t=e.target;

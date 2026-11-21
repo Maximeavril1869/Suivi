@@ -197,6 +197,26 @@ def test_parcours(browser):
     check('deux lignes ponctuelles au même libellé dans une fiche : refusé', 'même libellé' in msgs[-1], msgs[-1])
     pg.click('[data-a=closem]')
 
+    # suppression rapide d'une ligne ponctuelle : bouton ✕, sans vider le libellé
+    pg.evaluate("(m) => openSlip(m)", m0)
+    pg.click('[data-a=paaddx]')
+    pg.fill('#modal .pa-x:nth-of-type(2) .pa-xl', 'Autre prime')
+    pg.fill('#modal .pa-x:nth-of-type(2) .pa-xa', '40')
+    check('✕ présent sur chaque ligne ponctuelle', pg.locator('#modal .pa-x [data-a=paxdel]').count() == 2)
+    pg.click('#modal .pa-x:nth-of-type(1) [data-a=paxdel]')
+    check('✕ : la ligne disparaît de la fenêtre, l\'autre reste', pg.locator('#modal .pa-x').count() == 1 and pg.input_value('#modal .pa-xl') == 'Autre prime')
+    pg.click('[data-a=saveslip]')
+    r = [x['label'] for x in etat_paie(pg)['slips'][m0]['rows'] if x['k'].startswith('x:')]
+    check('enregistrement : la ligne supprimée n\'est plus dans la fiche, l\'autre est gardée', r == ['Autre prime'], r)
+    pg.evaluate("(m) => openSlip(m)", m0)
+    pg.click('[data-a=paxdel]')
+    pg.click('[data-a=closem]')
+    check('✕ puis fermeture sans enregistrer : rien n\'est modifié', [x['label'] for x in etat_paie(pg)['slips'][m0]['rows'] if x['k'].startswith('x:')] == ['Autre prime'])
+    pg.evaluate("(m) => openSlip(m)", m0)
+    pg.click('[data-a=paxdel]')
+    pg.click('[data-a=saveslip]')
+    check('dernière ligne ponctuelle supprimée : la fiche est enregistrée sans elle', not [x for x in etat_paie(pg)['slips'][m0]['rows'] if x['k'].startswith('x:')], etat_paie(pg)['slips'][m0]['rows'])
+
     # supprimer une fiche et valider en bloc
     pg.evaluate("(m) => openSlip(m)", m2)
     pg.click('[data-a=delslip]')
