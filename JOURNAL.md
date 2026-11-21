@@ -3,6 +3,13 @@
 Journal des opérations réalisées sur le projet, à relire pour savoir où il en est.
 Les entrées les plus récentes sont en haut. À chaque intervention, ajouter une entrée datée.
 
+## 2026-11-21 (soir) — Bulletin de paye : disposition des fiches et totaux (version 61)
+
+- Demandes : (1) le « net avant impôt » doit toujours s'afficher, égal au net à payer quand il n'y a pas de prélèvement à la source (premières fiches) ; (2) afficher les trois montants au même niveau et mettre le ratio ailleurs ; (3) dans une fiche, ajouter total des gains et total des retenues.
+- Fait : liste « Fiches validées » : ligne du haut = mois, nombre de lignes, et à droite le ratio « Retenues / brut » ; ligne du dessous = **Brut · Net avant impôt · Net à payer** sur trois colonnes. Net avant impôt = net à payer + ligne « Prélèvement à la source » (0 si absente) : plus de tiret. Une fiche sans ligne de gain garde « — / Net à payer ».
+- Fenêtre d'une fiche : bloc « Total des gains · Total des retenues · Net calculé » en haut, affiché aussi pour une nouvelle fiche et **mis à jour en direct** à chaque saisie (`paTot`, appelé par `paLive` et à l'ouverture) ; remplace l'ancienne ligne « Net calculé ». Les totaux suivent aussi la période payée et les ponctuelles.
+- Tests : `test_paie` 313 vérifications (disposition, net avant impôt sans PAS, totaux à l'ouverture et en direct). Service worker `compte-v61`.
+
 ## 2026-11-21 (après-midi, suite 2) — Bulletin de paye : menu « Mois ignorés » repliable (version 60)
 
 - Demande : un menu pour refermer « Mois ignorés ». Fait : la section est un menu repliable imbriqué dans « Fiches validées » (`details[data-fold="paie-skips"]`), titre « Mois ignorés (N) », ouvert par défaut, état ouvert/fermé gardé sur l'appareil (`FOLD`, comme les autres menus). Sélection et boutons « Remettre à valider » inchangés.

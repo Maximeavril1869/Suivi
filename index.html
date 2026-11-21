@@ -123,7 +123,7 @@ const KEY='compte-salaire-v1';
 /* Épargne bloquée et Bien : comptent dans le patrimoine net seulement. Jamais dans le reste à vivre, le budget du jour, les soldes des comptes cochés ni « Sortir du découvert », et on n'y saisit pas de lignes : on met à jour leur valeur (solde de référence). */
 const ILLIQ={bloque:1,bien:1};
 const isLiquid=a=>!ILLIQ[a.type];
-const APP_VERSION='60';   // identique au numéro de la constante V de sw.js (compte-v60) : à incrémenter ensemble à chaque livraison
+const APP_VERSION='61';   // identique au numéro de la constante V de sw.js (compte-v61) : à incrémenter ensemble à chaque livraison
 const CATS={
  'Revenus':['Salaire','Primes','Remboursements','Intérêts','Autres revenus'],
  'Logement':['Loyer / crédit','Charges','Énergie','Internet / téléphone','Assurance habitation','Travaux / mobilier'],
@@ -964,7 +964,7 @@ function paSeries(){
 }
 /* Net calculé d'une fiche = somme des gains − somme des retenues (les lignes « total / information » ne comptent pas). Il peut différer du net à payer imprimé : les bulletins ont des lignes de base et de plafond qui ne s'additionnent pas. Affiché seulement si la fiche a au moins une ligne de gain. */
 const paNet=rows=>paR2(rows.reduce((t,r)=>t+(r.kind==='gain'?r.amount:r.kind==='ret'?-r.amount:0),0));
-/* Totaux d'une fiche : brut = tous les gains ; net à payer = gains − retenues ; net avant impôt = net à payer + ligne « Prélèvement à la source » (repérée par son libellé) ; ratio = retenues en % du brut. */
+/* Totaux d'une fiche : brut = tous les gains ; net à payer = gains − retenues ; net avant impôt = net à payer + ligne « Prélèvement à la source » (repérée par son libellé), donc égal au net à payer quand la fiche n'a pas de prélèvement ; ratio = retenues en % du brut. */
 const paIsPas=r=>r.kind==='ret'&&norm(r.label).includes('PRELEVEMENT A LA SOURCE');
 function paSums(rows){
  const brut=paR2(rows.reduce((t,r)=>t+(r.kind==='gain'?r.amount:0),0)),ret=paR2(rows.reduce((t,r)=>t+(r.kind==='ret'?r.amount:0),0));
@@ -1104,7 +1104,7 @@ function paSlipsHTML(){
  return h+ms.slice().reverse().map(m=>{
   const rows=S.paie.slips[m].rows,on=sm&&sm.has(m),ok=rows.some(r=>r.kind==='gain');
   const t=paSums(rows);
-  return `<div class="row pa-fl" data-a="${sm?'paitog':'paislip'}" data-m="${m}">${sm?`<div style="font-size:20px;width:28px;flex:none" aria-hidden="true">${on?'☑':'☐'}</div>`:''}<div class="m"><div class="l">${esc(monthLabel(m))}</div><div class="s">${rows.length} ligne${rows.length>1?'s':''}</div></div>${ok?`<div class="a"><b>${paFmt(t.net)} €</b><div class="s">Net à payer</div></div>`:`<div class="a"><span class="mut">—</span><div class="s">Net à payer</div></div>`}${ok?`<div class="pa-sum"><div><div class="s">Brut</div><b>${paFmt(t.brut)} €</b></div><div><div class="s">Net avant impôt</div><b>${t.hasPas?paFmt(t.avant)+' €':'—'}</b></div><div><div class="s">Retenues / brut</div><b>${t.ratio===null?'—':paNum(t.ratio.toFixed(1))+' %'}</b></div></div>`:''}</div>`;
+  return `<div class="row pa-fl" data-a="${sm?'paitog':'paislip'}" data-m="${m}">${sm?`<div style="font-size:20px;width:28px;flex:none" aria-hidden="true">${on?'☑':'☐'}</div>`:''}<div class="m"><div class="l">${esc(monthLabel(m))}</div><div class="s">${rows.length} ligne${rows.length>1?'s':''}</div></div>${ok?`<div class="a"><b>${t.ratio===null?'—':paNum(t.ratio.toFixed(1))+' %'}</b><div class="s">Retenues / brut</div></div>`:`<div class="a"><span class="mut">—</span><div class="s">Net à payer</div></div>`}${ok?`<div class="pa-sum"><div><div class="s">Brut</div><b>${paFmt(t.brut)} €</b></div><div><div class="s">Net avant impôt</div><b>${paFmt(t.avant)} €</b></div><div><div class="s">Net à payer</div><b>${paFmt(t.net)} €</b></div></div>`:''}</div>`;
  }).join('');
 }
 function paModelHTML(){
@@ -1150,7 +1150,7 @@ function openSlip(ym,over,prOver){
  });
  txCtx={pm:ym};
  openModal(`<h3>Bulletin de ${esc(monthLabel(ym))}</h3>
- ${!isNew&&old.rows.some(r=>r.kind==='gain')?`<p style="margin:-4px 0 8px"><b>Net calculé : ${paFmt(paNet(old.rows))} €</b> <span class="s">(gains − retenues)</span></p>`:''}
+ <div class="pa-sum" id="pa_tot" style="margin:-2px 0 10px"></div>
  <p class="s" style="margin-top:-6px">${isNew?'Montants du modèle : corrige ce qui a changé. ':''}Laisse un champ vide si la ligne n'existe pas ce mois-ci. Les lignes « calculées » se mettent à jour quand tu changes une ligne fixe d'une nouvelle fiche ; tu peux aussi les corriger à la main. Si tu changes un montant fixe, l'app te demandera s'il vaut aussi pour les mois suivants.</p>
  <label>Période payée <span class="s">· jours du mois, base 30 (vide = mois complet)</span></label>
  <div style="display:flex;gap:8px;align-items:center;margin-bottom:2px"><span>du</span><input id="pa_d" class="pa-p" inputmode="numeric" placeholder="1" value="${pr&&pr.d>1?pr.d:''}"><span>au</span><input id="pa_f" class="pa-p" inputmode="numeric" placeholder="${paDim(ym)}" value="${pr&&pr.f<paDim(ym)?pr.f:''}"></div>
@@ -1162,6 +1162,7 @@ function openSlip(ym,over,prOver){
  <button class="ghost" style="width:100%;margin-bottom:10px" data-a="paaddx">+ Ajouter une ligne ponctuelle</button>
  <div class="btns"><button class="ghost" data-a="closem">Annuler</button><button class="primary" data-a="saveslip">${isNew?'Valider':'Enregistrer'}</button></div>
  ${isNew?'':'<div style="margin-top:10px"><button class="danger" style="width:100%" data-a="delslip">Supprimer cette fiche</button></div>'}`);
+ paTot();
 }
 function paLive(src){
  const ym=txCtx.pm,ov={},els=[...document.querySelectorAll('#modal .pa-a')];
@@ -1170,6 +1171,7 @@ function paLive(src){
  const xs=[...document.querySelectorAll('#modal .pa-x')].filter(x=>x.querySelector('.pa-xr').checked).map(x=>{const a=parseAmount(x.querySelector('.pa-xa').value.trim()||'0');return{kind:x.querySelector('.pa-xk').value,amount:isNaN(a)?0:paR2(a)};});
  const c=paCompute(ym,ov,xs,paFormQ());
  els.forEach(el=>{if(el.dataset.man!=='1')el.value=paNum(c[el.dataset.k]);});
+ paTot();
 }
 /* Quotité lue dans la fenêtre de fiche (1 = mois complet ; période invalide : 1). */
 function paFormQ(){const d=$('pa_d'),f=$('pa_f');if(!d||!f)return 1;const n=paDays(txCtx.pm,parseInt(d.value,10)||0,parseInt(f.value,10)||0);return n?Math.min(1,n/30):1;}
@@ -1188,6 +1190,16 @@ function paPeriod(){
   box.dataset.q=q;
  }
  paLive(null);
+}
+/* Totaux affichés en haut de la fenêtre de fiche, mis à jour à chaque saisie : total des gains, total des retenues, net calculé (gains − retenues). */
+function paTot(){
+ const box=$('pa_tot');if(!box)return;
+ let g=0,r=0;
+ const add=(k,a)=>{if(isNaN(a))return;if(k==='gain')g+=a;else if(k==='ret')r+=a;};
+ document.querySelectorAll('#modal .pa-a').forEach(el=>{const l=S.paie.lines.find(x=>x.id===el.dataset.k);if(l)add(l.kind,parseAmount(el.value.trim()||'0'));});
+ document.querySelectorAll('#modal .pa-x').forEach(x=>add(x.querySelector('.pa-xk').value,parseAmount(x.querySelector('.pa-xa').value.trim()||'0')));
+ g=paR2(g);r=paR2(r);
+ box.innerHTML=`<div><div class="s">Total des gains</div><b>${paFmt(g)} €</b></div><div><div class="s">Total des retenues</div><b>${paFmt(r)} €</b></div><div><div class="s">Net calculé</div><b>${paFmt(paR2(g-r))} €</b></div>`;
 }
 function paRecalcForm(){
  document.querySelectorAll('#modal .pa-a[data-c="1"]').forEach(el=>{el.dataset.man='0';});
