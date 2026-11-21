@@ -3,6 +3,13 @@
 Journal des opérations réalisées sur le projet, à relire pour savoir où il en est.
 Les entrées les plus récentes sont en haut. À chaque intervention, ajouter une entrée datée.
 
+## 2026-11-21 (soir, suite) — Bulletin de paye : totaux dans le tableau d'évolution (version 62)
+
+- Demande : dans le tableau d'évolution, ajouter les totaux par gains et par retenues (« revenus » compris comme « gains » : à confirmer) et afficher le total de la période affichée.
+- Fait : colonne **Total** à droite = somme des mois affichés (la fenêtre de trois mois, qui se décale avec ‹ ›) pour chaque ligne, y compris les lignes « total / information » ; ligne **Total des gains** après la dernière ligne de gain, **Total des retenues** puis **Net calculé** après les retenues (valeurs mensuelles issues de `paSums`, total de période dans la colonne Total) ; « — » quand la ligne n'a aucun montant sur la période ; période rappelée sous le tableau. Les libellés des lignes de total passent sur deux lignes si besoin.
+- Piège évité : une classe `.sub` existait déjà (affichage flex) et écrasait les lignes de total ; classe renommée `pa-st` (repérée par `test_debordements`).
+- Tests : `test_tableau_totaux` (totaux par mois et sur la période, décalage de fenêtre, ligne absente d'un mois), `test_paie` 324 vérifications, `test_debordements` 282 sans échec. Service worker `compte-v62`.
+
 ## 2026-11-21 (soir) — Bulletin de paye : disposition des fiches et totaux (version 61)
 
 - Demandes : (1) le « net avant impôt » doit toujours s'afficher, égal au net à payer quand il n'y a pas de prélèvement à la source (premières fiches) ; (2) afficher les trois montants au même niveau et mettre le ratio ailleurs ; (3) dans une fiche, ajouter total des gains et total des retenues.

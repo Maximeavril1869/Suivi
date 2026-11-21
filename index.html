@@ -104,6 +104,10 @@ table.pa th.l,table.pa td.l{width:30%;overflow:hidden;text-overflow:ellipsis;whi
 table.pa th.n,table.pa td.n{text-align:right;white-space:nowrap;padding-left:2px;padding-right:2px}
 table.pa th{color:var(--mut);font-weight:600}
 table.pa td.chg{font-weight:700;color:var(--pri)}
+table.pa.pt th.l,table.pa.pt td.l{width:25%}
+table.pa th.tc,table.pa td.tc{text-align:right;white-space:nowrap;padding-left:2px;padding-right:2px;font-weight:700;border-left:1px solid var(--line)}
+table.pa tr.pa-st td{font-weight:700;border-top:1px solid var(--line)}
+table.pa tr.pa-st td.l{white-space:normal;line-height:1.2;overflow:visible}
 table.pa td.grp{color:var(--mut);font-size:11px;font-weight:700;text-transform:uppercase;padding-top:10px;border-bottom:0}
 </style>
 </head>
@@ -123,7 +127,7 @@ const KEY='compte-salaire-v1';
 /* Épargne bloquée et Bien : comptent dans le patrimoine net seulement. Jamais dans le reste à vivre, le budget du jour, les soldes des comptes cochés ni « Sortir du découvert », et on n'y saisit pas de lignes : on met à jour leur valeur (solde de référence). */
 const ILLIQ={bloque:1,bien:1};
 const isLiquid=a=>!ILLIQ[a.type];
-const APP_VERSION='61';   // identique au numéro de la constante V de sw.js (compte-v61) : à incrémenter ensemble à chaque livraison
+const APP_VERSION='62';   // identique au numéro de la constante V de sw.js (compte-v62) : à incrémenter ensemble à chaque livraison
 const CATS={
  'Revenus':['Salaire','Primes','Remboursements','Intérêts','Autres revenus'],
  'Logement':['Loyer / crédit','Charges','Énergie','Internet / téléphone','Assurance habitation','Travaux / mobilier'],
@@ -1046,17 +1050,24 @@ function paTableHTML(){
  if(!ms.length)return '<p class="mut">Aucune fiche validée pour l\'instant.</p>';
  const e=ms.length-paWin,b=Math.max(0,e-3),cols=ms.slice(b,e);
  let h=`<div class="mnav" style="margin:0 0 6px"><button data-a="pawin" data-d="1" aria-label="Mois plus anciens" ${b===0?'disabled':''}>‹</button><span class="s">${esc(paShort(cols[0]))}${cols.length>1?' → '+esc(paShort(cols[cols.length-1])):''}</span><button data-a="pawin" data-d="-1" aria-label="Mois plus récents" ${paWin===0?'disabled':''}>›</button></div>`;
- h+=`<table class="pa"><thead><tr><th class="l"></th>${cols.map(m=>`<th class="n">${esc(paShort(m))}</th>`).join('')}</tr></thead><tbody>`;
+ const per=cols.length>1?paShort(cols[0])+' → '+paShort(cols[cols.length-1]):paShort(cols[0]);
+ const sum=a=>{const v=a.filter(x=>x!==undefined);return v.length?paFmt(paR2(v.reduce((t,x)=>t+x,0))):'—';};
+ h+=`<table class="pa pt"><thead><tr><th class="l"></th>${cols.map(m=>`<th class="n">${esc(paShort(m))}</th>`).join('')}<th class="tc">Total</th></tr></thead><tbody>`;
+ const sums=cols.map(m=>paSums(S.paie.slips[m].rows));
+ /* ligne de total d'un type (gains, retenues) et net calculé, après le dernier de ses lignes */
+ const totRow=(label,f)=>`<tr class="pa-st"><td class="l">${label}</td>${sums.map(t=>`<td class="n">${paFmt(f(t))}</td>`).join('')}<td class="tc">${sum(sums.map(f))}</td></tr>`;
+ const closing=k=>k==='gain'?totRow('Total des gains',t=>t.brut):k==='ret'?totRow('Total des retenues',t=>t.ret)+totRow('Net calculé',t=>t.net):'';
  let last='';
  ser.forEach(s=>{
-  if(s.kind!==last){last=s.kind;h+=`<tr><td colspan="${cols.length+1}" class="grp">${esc(PA_KINDS[s.kind])}</td></tr>`;}
+  if(s.kind!==last){h+=closing(last);last=s.kind;h+=`<tr><td colspan="${cols.length+2}" class="grp">${esc(PA_KINDS[s.kind])}</td></tr>`;}
   h+=`<tr><td class="l">${esc(s.label)}</td>${cols.map(m=>{
    const v=s.vals[m];if(v===undefined)return '<td class="n mut">—</td>';
    const i=ms.indexOf(m),pv=i>0?s.vals[ms[i-1]]:undefined;
    const ch=pv!==undefined&&Math.abs(pv-v)>=0.005;
-   return `<td class="n${ch?' chg':''}">${paFmt(v)}</td>`;}).join('')}</tr>`;
+   return `<td class="n${ch?' chg':''}">${paFmt(v)}</td>`;}).join('')}<td class="tc">${sum(cols.map(m=>s.vals[m]))}</td></tr>`;
  });
- return h+'</tbody></table><p class="s">Montant en gras et en couleur : différent de la fiche précédente. Montants en euros, tels que sur le bulletin.</p>';
+ h+=closing(last);
+ return h+`</tbody></table><p class="s">Colonne « Total » : somme des mois affichés (${esc(per)}). Montant en gras et en couleur : différent de la fiche précédente. Montants en euros, tels que sur le bulletin.</p>`;
 }
 function paChartHTML(){
  const ser=paSeries();

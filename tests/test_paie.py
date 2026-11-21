@@ -140,7 +140,7 @@ def test_parcours(browser):
     check('plus rien à valider', pg.evaluate("() => paDue()") == [] and 'Rien à valider' in pg.inner_text('#app'))
 
     t = norm(pg.inner_text('table.pa')).upper()
-    check('tableau : 3 mois, gains puis retenues puis totaux', t.index('GAIN') < t.index('RETENUE') < t.index('TOTAL') and t.count('2 500,55') == 3, t)
+    check('tableau : 3 mois, gains puis retenues puis totaux', t.index('GAIN') < t.index('RETENUE') < t.index('TOTAL / INFORMATION') and t.count('2 500,55') >= 3, t)
     pg.evaluate("() => { S.paie.slips['%s'].rows[0].amount = 2510.55; render(); }" % m0)
     check('montant différent de la fiche précédente en gras (classe chg)', pg.evaluate("() => document.querySelectorAll('table.pa td.chg').length") == 1)
 
@@ -562,7 +562,7 @@ def test_ordre_modele(browser):
     pg.evaluate("() => { FOLD['paie-mod'] = true; FOLD['paie-evo'] = true; render(); }")
     check('ordre conservé au rechargement', ordre() == ['Charlie', 'Bravo', 'Alpha', 'Retenue1'], ordre())
     tab = pg.evaluate("() => [...document.querySelectorAll('table.pa td.l')].map((e) => e.textContent)")
-    check('tableau d\'évolution dans le même ordre', tab == ['Charlie', 'Bravo', 'Alpha', 'Retenue1'], tab)
+    check('tableau d\'évolution dans le même ordre (avec les lignes de total)', tab == ['Charlie', 'Bravo', 'Alpha', 'Total des gains', 'Retenue1', 'Total des retenues', 'Net calculé'], tab)
     pg.evaluate("(m) => openSlip(m)", m)
     fiche = pg.evaluate("() => [...document.querySelectorAll('#modal .pa-a')].map((e) => e.closest('label').textContent.split(' ·')[0].trim())")
     check('fiche : même ordre', fiche == ['Charlie', 'Bravo', 'Alpha', 'Retenue1'], fiche)
@@ -977,6 +977,36 @@ def test_proratisation(browser):
     check('aucune erreur JavaScript', not pg.errors, pg.errors)
 
 
+def test_tableau_totaux(browser):
+    print('Tableau d\'évolution : totaux des gains et des retenues, total de la période affichée')
+    pg = device(browser, FauxSupabase())
+    depart(pg)
+    ouvre_paie(pg)
+    ms = [mois(pg, k) for k in range(-4, 1)]
+    pg.evaluate("""(ms) => {
+      const mk = (id, label, kind, amount) => ({ id, label, kind, amount, start: ms[0], end: '', mode: 'fixed' });
+      S.paie.lines = [mk('g', 'Traitement', 'gain', 1000), mk('p', 'Prime', 'gain', 100), mk('r', 'Retraite', 'ret', 100), mk('n', 'Net imprimé', 'tot', 900)];
+      S.paie.slips = {};
+      ms.forEach((m, i) => { S.paie.slips[m] = { rows: [{ k: 'g', label: 'Traitement', kind: 'gain', amount: 1000 + 100 * i }, { k: 'p', label: 'Prime', kind: 'gain', amount: 50 }, { k: 'r', label: 'Retraite', kind: 'ret', amount: 100 + 10 * i }, { k: 'n', label: 'Net imprimé', kind: 'tot', amount: 800 }] }; });
+      FOLD['paie-evo'] = true; paWin = 0; render();
+    }""", ms)
+    cell = lambda lib: pg.evaluate("(l) => { const tr = [...document.querySelectorAll('table.pa tbody tr')].find((x) => x.querySelector('td.l') && x.querySelector('td.l').textContent === l); return tr ? [...tr.querySelectorAll('td.n, td.tc')].map((e) => e.textContent.replace(/\\s/g, ' ').trim()) : null; }", lib)
+    check('en-tête : trois mois puis colonne « Total »', pg.evaluate("() => [...document.querySelectorAll('table.pa thead th')].map((e) => e.textContent.trim()).length") == 5 and pg.evaluate("() => document.querySelector('table.pa thead th.tc').textContent") == 'Total')
+    # mois affichés : les trois derniers (indices 2, 3, 4)
+    check('total des gains par mois et pour la période : 1250, 1350, 1450 → 4 050,00', cell('Total des gains') == ['1 250,00', '1 350,00', '1 450,00', '4 050,00'], cell('Total des gains'))
+    check('total des retenues : 120, 130, 140 → 390,00', cell('Total des retenues') == ['120,00', '130,00', '140,00', '390,00'], cell('Total des retenues'))
+    check('net calculé : 1130, 1220, 1310 → 3 660,00', cell('Net calculé') == ['1 130,00', '1 220,00', '1 310,00', '3 660,00'], cell('Net calculé'))
+    check('total par ligne sur la période : traitement 3 300 + prime 150', cell('Traitement')[-1] == '3 900,00' and cell('Prime')[-1] == '150,00', (cell('Traitement'), cell('Prime')))
+    check('ligne « total / information » : somme aussi (3 × 800)', cell('Net imprimé')[-1] == '2 400,00', cell('Net imprimé'))
+    check('total des gains juste après la dernière ligne de gain, avant les retenues', pg.evaluate("() => [...document.querySelectorAll('table.pa td.l')].map((e) => e.textContent)") == ['Traitement', 'Prime', 'Total des gains', 'Retraite', 'Total des retenues', 'Net calculé', 'Net imprimé'])
+    check('période affichée rappelée sous le tableau', 'somme des mois affichés' in pg.inner_text('#app'))
+    pg.click('[data-a=pawin][data-d="1"]')
+    check('mois plus anciens (indices 1, 2, 3) : le total suit la période affichée (1150 + 1250 + 1350 = 3 750,00)', cell('Total des gains')[-1] == '3 750,00', cell('Total des gains'))
+    pg.evaluate("(ms) => { delete S.paie.slips[ms[2]].rows[1]; S.paie.slips[ms[2]].rows = S.paie.slips[ms[2]].rows.filter(Boolean); paWin = 0; render(); }", ms)
+    check('ligne absente d\'un mois : « — » dans la case, total sur les mois présents', cell('Prime') == ['—', '50,00', '50,00', '100,00'], cell('Prime'))
+    check('aucune erreur JavaScript', not pg.errors, pg.errors)
+
+
 def test_point_acf(browser):
     print('Valeur du point ACF : saisie, ligne « points ACF », valeur datée')
     pg = device(browser, FauxSupabase())
@@ -1235,6 +1265,7 @@ def main():
         test_recalcul_toutes_fiches(browser)
         test_bulletin_reel(browser)
         test_proratisation(browser)
+        test_tableau_totaux(browser)
         test_ligne_dans_fiches_existantes(browser)
         test_net_calcule(browser)
         test_totaux_fiche(browser)
