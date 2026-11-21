@@ -614,6 +614,31 @@ def test_mois_ignores(browser):
     pg.evaluate("(m) => { S.paie.skips = [m, addMonths(m, 1)]; render(); }", m0)
     pg.click('[data-a=paiunskipall]')
     check('« Tout remettre à valider »', etat_paie(pg)['skips'] == [] and pg.evaluate("() => paDue().length") == 3)
+    # sélection : tout sélectionner, remettre à valider
+    pg.evaluate("([a, b, c]) => { S.paie.skips = [a, b, c]; render(); }", [m0, m1, m2])
+    check('trois mois ignorés : bouton « Sélectionner » présent', pg.locator('[data-a=paksel]').count() == 1)
+    pg.click('[data-a=paksel]')
+    check('mode sélection : cases vides, « Remettre à valider (0) » désactivé, boutons par mois masqués', pg.inner_text('[data-a=pakres]').strip() == 'Remettre à valider (0)' and pg.evaluate("() => document.querySelector('[data-a=pakres]').disabled") is True and pg.locator('[data-a=paiunskip]').count() == 0 and pg.locator('[data-a=paiunskipall]').count() == 0)
+    pg.click('[data-a=paktog][data-m="%s"]' % m1)
+    check('un mois coché : compteur à 1', pg.inner_text('[data-a=pakres]').strip() == 'Remettre à valider (1)' and pg.inner_text('[data-a=paktog][data-m="%s"]' % m1).count('☑') == 1)
+    pg.click('[data-a=pakselall]')
+    check('« Tout sélectionner » : les 3 mois', pg.inner_text('[data-a=pakres]').strip() == 'Remettre à valider (3)')
+    pg.click('[data-a=pakselall]')
+    check('« Tout désélectionner » : aucun', pg.inner_text('[data-a=pakres]').strip() == 'Remettre à valider (0)')
+    pg.click('[data-a=paktog][data-m="%s"]' % m0)
+    pg.click('[data-a=paktog][data-m="%s"]' % m2)
+    pg.click('[data-a=pakres]')
+    check('deux mois remis à valider, le troisième reste ignoré, sortie du mode sélection', etat_paie(pg)['skips'] == [m1] and pg.evaluate("() => paDue()") == [m0, m2] and pg.locator('[data-a=pakres]').count() == 0)
+    pg.evaluate("([a, b, c]) => { S.paie.skips = [a, b, c]; render(); }", [m0, m1, m2])
+    pg.click('[data-a=paksel]')
+    pg.click('[data-a=pakselall]')
+    pg.click('[data-a=pakres]')
+    check('tout sélectionner puis remettre : plus aucun mois ignoré, section disparue', etat_paie(pg)['skips'] == [] and 'Mois ignorés' not in pg.inner_text('#app'))
+    pg.evaluate("([a, b, c]) => { S.paie.skips = [a, b, c]; render(); }", [m0, m1, m2])
+    pg.click('[data-a=paksel]')
+    pg.click('[data-a=pakselend]')
+    check('« Annuler » : rien n\'est remis, bouton « Sélectionner » de retour', etat_paie(pg)['skips'] == [m0, m1, m2] and pg.locator('[data-a=paksel]').count() == 1)
+    check('aucune erreur JavaScript', not pg.errors, pg.errors)
 def test_selection_lignes(browser):
     print('Sélectionner des lignes du modèle pour les supprimer')
     pg = device(browser, FauxSupabase())
@@ -842,6 +867,43 @@ def test_recalcul_toutes_fiches(browser):
     check('fenêtre de la ligne : historique visible avec 2 entrées', pg.locator('#modal [data-a=pahistdel]').count() == 2 and 'Au départ' in pg.inner_text('#modal'))
     pg.click('#modal [data-a=pahistdel][data-i="0"]')
     check('entrée de départ supprimée : fiche recalculée au taux de 2,4 % (49,52), historique à 1 entrée', pg.evaluate("(m) => S.paie.slips[m].rows.find((r) => r.k === 'c').amount", m0) == 49.52 and pg.locator('#modal [data-a=pahistdel]').count() == 1, pg.evaluate("(m) => S.paie.slips[m].rows.find((r) => r.k === 'c').amount", m0))
+    check('aucune erreur JavaScript', not pg.errors, pg.errors)
+
+
+def test_bulletin_reel(browser):
+    print('Bulletin réel : rappel de CSG (ponctuelle soumise) et transfert primes/points négatif')
+    pg = device(browser, FauxSupabase())
+    pg.on('dialog', lambda d: d.accept())
+    depart(pg)
+    ouvre_paie(pg)
+    m = mois(pg, -1)
+    pg.evaluate("""(m) => {
+      const mk = (id, label, kind, amount, extra) => Object.assign({ id, label, kind, amount, start: m, end: '', mode: 'fixed' }, extra || {});
+      const base = ['t', 'im', 'pr', 'ia', 'acf', 'ics'];
+      S.paie.lines = [mk('t', 'Traitement brut', 'gain', 1537.01), mk('im', 'Indemnité mensuelle', 'gain', 106.76), mk('pr', 'Prime de rendement', 'gain', 150.78), mk('ia', 'Indemnité administration', 'gain', 128.03), mk('acf', 'ACF technicité', 'gain', 100.93), mk('ics', 'Indemnité compensatrice CSG', 'gain', 15.38),
+        mk('tr', 'Transfert prime/point', 'ret', 13.92), mk('pc', 'Retenue PC', 'ret', 162.31), mk('imt', 'Retenue PC IMT', 'ret', 21.35),
+        mk('nd', 'CSG non déductible', 'ret', 2.4, { mode: 'rate', base: base.concat('tr'), coef: 98.25, xp: true }),
+        mk('de', 'CSG déductible', 'ret', 6.8, { mode: 'rate', base: base.concat('tr'), coef: 98.25, xp: true }),
+        mk('cr', 'CRDS', 'ret', 0.5, { mode: 'rate', base: base.concat('tr'), coef: 98.25, xp: true }),
+        mk('ra', 'RAFP', 'ret', 5, { mode: 'rate', base: base, cap: { pct: 20, line: 't' } })];
+      S.paie.slips = {}; render(); openSlip(m);
+    }""", m)
+    val = lambda k: pg.evaluate("(k) => parseAmount(document.querySelector('#modal .pa-a[data-k=\"' + k + '\"]').value)", k)
+    check('mois courant (transfert 13,92, sans rappel) : CSG déd. 135,29, non déd. 47,75, CRDS 9,95', (val('de'), val('nd'), val('cr')) == (135.29, 47.75, 9.95), (val('de'), val('nd'), val('cr')))
+    pg.fill('#modal .pa-a[data-k="tr"]', '-9,28')
+    pg.click('[data-a=paaddx]')
+    pg.fill('#modal .pa-xl', 'Rappel indemnité compensatrice CSG')
+    pg.fill('#modal .pa-xa', '25,62')
+    pg.check('#modal .pa-xr')
+    check('bulletin : CSG déductible 138,55, non déductible 48,90, CRDS 10,19, RAFP 15,37', (val('de'), val('nd'), val('cr'), val('ra')) == (138.55, 48.9, 10.19, 15.37), (val('de'), val('nd'), val('cr'), val('ra')))
+    pg.click('[data-a=saveslip]')
+    check('transfert différent du modèle : question « mois suivants » posée (seul le transfert, pas les lignes calculées)', 'Transfert prime/point' in pg.inner_text('#modal') and 'CSG' not in pg.inner_text('#modal'), pg.inner_text('#modal')[:200])
+    pg.check('#modal input[name=pp_0][value=one]')
+    pg.click('[data-a=paipropag]')
+    rows = {r['k']: r['amount'] for r in etat_paie(pg)['slips'][m]['rows']}
+    check('fiche enregistrée : transfert −9,28 conservé avec son signe, CSG déd. 138,55', rows.get('tr') == -9.28 and rows.get('de') == 138.55, rows)
+    pg.evaluate("(m) => paRecalcMonth(m)", m)
+    check('recalcul de la fiche validée : mêmes montants (signe et ponctuelle conservés)', pg.evaluate("(m) => S.paie.slips[m].rows.filter((r) => ['de', 'nd', 'cr'].includes(r.k)).map((r) => r.amount).sort().join(',')", m) == '10.19,138.55,48.9')
     check('aucune erreur JavaScript', not pg.errors, pg.errors)
 
 
@@ -1101,6 +1163,7 @@ def main():
         test_suppression_fiches_validees(browser)
         test_ponctuelles_taux(browser)
         test_recalcul_toutes_fiches(browser)
+        test_bulletin_reel(browser)
         test_ligne_dans_fiches_existantes(browser)
         test_net_calcule(browser)
         test_totaux_fiche(browser)

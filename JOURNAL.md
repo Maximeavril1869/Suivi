@@ -3,6 +3,14 @@
 Journal des opérations réalisées sur le projet, à relire pour savoir où il en est.
 Les entrées les plus récentes sont en haut. À chaque intervention, ajouter une entrée datée.
 
+## 2026-11-21 (après-midi) — Bulletin de paye : montants négatifs dans les fiches (version 58)
+
+- Demande : l'utilisateur n'arrive pas à retrouver les montants d'un bulletin réel (CSG déd. 138,55 ; non déd. 48,90 ; CRDS 10,19 ; RAFP 15,37). Analyse du bulletin : base de CSG/CRDS = 2 073,79 = gains 2 064,51 (dont « rappel indemnité compensatrice CSG année courante » 25,62) **plus** 9,28, le « transfert primes/points » étant **négatif** (−9,28), donc une retenue négative qui élargit la base. RAFP : base plafonnée à 20 % du traitement (307,40 × 5 % = 15,37).
+- Cause trouvée dans l'app : `saveSlip` et `paLive` forçaient `Math.abs` sur les montants de fiche, donc −9,28 devenait +9,28 (base rétrécie). Corrigé : le signe est conservé dans les fiches (lignes du modèle et ponctuelles) ; le modèle reste en valeur absolue (« le type porte le sens »). Une retenue négative s'ajoute à la base, un gain négatif la réduit.
+- Pour reproduire ce bulletin : (1) cocher « Inclure les lignes ponctuelles soumises aux taux » sur CSG déductible, CSG non déductible et CRDS (lignes existantes : décoché par défaut) ; (2) dans la fiche, saisir −9,28 sur « Transfert prime/point » (répondre « Ce mois seulement » à la question de propagation) ; (3) ajouter la ponctuelle « Rappel … » 25,62 en gain, case « Soumise aux taux » cochée.
+- Tests : `test_bulletin_reel` (parcours complet de ce bulletin), `test_paie` 291 vérifications. Service worker `compte-v58`.
+- Non résolu : CSG non déductible à 137,28 dans une fiche (voir v57), toujours à éclaircir avec l'historique de la ligne.
+
 ## 2026-11-21 (reprise, suite 3) — Bulletin de paye : historique daté visible et supprimable (version 57)
 
 - Retour de l'utilisateur : le recalcul (fiche ou global) « n'a rien changé », CSG non déductible à 137,28 au lieu de 47,75 sur tous les mois. Les deux boutons passent par `paCompute` : la valeur est donc bien celle que donne le calcul pour ces mois. Hypothèse (non confirmée) : un ancien taux dans l'historique daté `hist` de la ligne (`paAmt(l, mois)`), invisible jusqu'ici dans l'app.
