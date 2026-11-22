@@ -3,6 +3,13 @@
 Journal des opérations réalisées sur le projet, à relire pour savoir où il en est.
 Les entrées les plus récentes sont en haut. À chaque intervention, ajouter une entrée datée.
 
+## 2026-11-22 — Tous les menus repliables sont repliés de base (version 64)
+
+- Demande : « tous les menus repliables doivent être repliés de base ».
+- Fait : valeur par défaut passée à *replié* pour les menus qui s'ouvraient seuls : Évolution (tableau), Évolution (courbe), Mon modèle de bulletin (il s'ouvrait quand il n'y avait aucune ligne), Mois ignorés, Historique des valeurs (fenêtre d'une ligne), groupes d'organismes de la carte Comptes de l'Accueil. Les autres (Réglages, Fiches validées, Historique de la ligne, groupes de Réglages) l'étaient déjà. Aucune règle d'ouverture automatique ne subsiste (`foldOpen`/`foldCard` : défaut `false` partout).
+- Limite : un menu que tu as déjà ouvert ou fermé garde son état sur l'appareil (`compte-replis`), la nouvelle valeur ne joue que pour les menus jamais touchés. Pour tout remettre à plat sur un appareil : effacer ce réglage.
+- Tests : états de départ vérifiés (paie, Mois ignorés, Historique des valeurs, groupes de l'Accueil), les parcours ouvrent les menus dont ils lisent le contenu ; `test_paie` 337, `test_debordements` 282, `test_sync` 57, `test_comptes_accueil` 36, `test_replis` 34 sans échec. Service worker `compte-v64`.
+
 ## 2026-11-21 (soir, suite 2) — Bulletin de paye : choix de la période des statistiques (version 63)
 
 - Demande : « tu n'as pas codé le choix de la période pour les stats ». Constat : en version 62 les flèches ne faisaient que glisser une fenêtre de trois mois, sans vrai choix. Réponses : sélecteurs « du mois X au mois Y », un seul choix pour le tableau et la courbe.

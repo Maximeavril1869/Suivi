@@ -127,7 +127,7 @@ const KEY='compte-salaire-v1';
 /* Épargne bloquée et Bien : comptent dans le patrimoine net seulement. Jamais dans le reste à vivre, le budget du jour, les soldes des comptes cochés ni « Sortir du découvert », et on n'y saisit pas de lignes : on met à jour leur valeur (solde de référence). */
 const ILLIQ={bloque:1,bien:1};
 const isLiquid=a=>!ILLIQ[a.type];
-const APP_VERSION='63';   // identique au numéro de la constante V de sw.js (compte-v62) : à incrémenter ensemble à chaque livraison
+const APP_VERSION='64';   // identique au numéro de la constante V de sw.js (compte-v62) : à incrémenter ensemble à chaque livraison
 const CATS={
  'Revenus':['Salaire','Primes','Remboursements','Intérêts','Autres revenus'],
  'Logement':['Loyer / crédit','Charges','Énergie','Internet / téléphone','Assurance habitation','Travaux / mobilier'],
@@ -456,7 +456,7 @@ function accFoldHTML(){
  const grp=[];LQ.forEach(a=>{const g=a.group||'';let e=grp.find(x=>x.g===g);if(!e){e={g,l:[]};grp.push(e);}e.l.push(a);});
  const multi=grp.length>1||(grp[0]&&grp[0].g);
  const row=a=>{const on=S.shown.includes(a.id),b=accBalance(a.id,now);return `<div class="row" data-a="togacc" data-id="${esc(a.id)}"><div class="m"><div class="l">${on?'☑':'☐'} ${esc(multi?a.name:accName(a.id))}</div></div><div class="a ${b<0?'neg':''}">${fmt(b)}</div></div>`;};
- const list=grp.map(e=>multi?`<details class="fold grp" data-fold="${esc('h:'+e.g)}"${foldOpen('h:'+e.g,true)?' open':''}><summary><b>${esc(e.g||'Sans organisme')}</b><span class="s">${fmt(e.l.reduce((t,a)=>t+accBalance(a.id,now),0))}</span></summary>${e.l.map(row).join('')}</details>`:e.l.map(row).join('')).join('');
+ const list=grp.map(e=>multi?`<details class="fold grp" data-fold="${esc('h:'+e.g)}"${foldOpen('h:'+e.g,false)?' open':''}><summary><b>${esc(e.g||'Sans organisme')}</b><span class="s">${fmt(e.l.reduce((t,a)=>t+accBalance(a.id,now),0))}</span></summary>${e.l.map(row).join('')}</details>`:e.l.map(row).join('')).join('');
  return foldCard('hacc',`Comptes : ${nOn} sur ${LQ.length} · solde ${fmt(balanceAt(now,false))}`,`<div style="margin-top:6px">${list}</div><div class="btns" style="margin-top:10px"><button class="ghost" data-a="allacc" data-v="1">Tout cocher</button><button class="ghost" data-a="allacc" data-v="0">Tout décocher</button></div>`,false);
 }
 /* Patrimoine net = tout ce qu'on possède moins tout ce qu'on doit. Tous les comptes comptent, cochés ou non. Dettes : emprunts, carte de crédit (plafond − disponible), achats en attente d'une carte différée. */
@@ -1145,17 +1145,17 @@ function paSkipsHTML(){
  if(paSelK)paSelK=new Set([...paSelK].filter(m=>sk.includes(m)));
  const sm=paSelK;
  const bar=sm?`<p class="s" style="margin:2px 0 6px">Touche les mois à remettre dans « À valider ».</p><div class="btns" style="margin-bottom:6px"><button class="ghost small" data-a="pakselall">${sm.size===sk.length?'Tout désélectionner':'Tout sélectionner'}</button><button class="ghost small" data-a="pakselend">Annuler</button><button class="primary small" data-a="pakres" ${sm.size?'':'disabled'}>Remettre à valider (${sm.size})</button></div>`:(sk.length>1?'<div style="text-align:right;margin:4px 0"><button class="ghost small" data-a="paksel">Sélectionner</button></div>':'');
- return `<details class="fold" data-fold="paie-skips"${foldOpen('paie-skips',true)?' open':''} style="margin-top:12px"><summary><b>Mois ignorés (${sk.length})</b></summary><p class="s" style="margin-top:6px">Ces mois ne sont ni à valider ni validés. Remets-les dans « À valider » pour les saisir.</p>${bar}${sk.map(m=>sm?`<div class="row" data-a="paktog" data-m="${m}"><div style="font-size:20px;width:28px;flex:none" aria-hidden="true">${sm.has(m)?'☑':'☐'}</div><div class="m"><div class="l">${esc(monthLabel(m))}</div></div></div>`:`<div class="row"><div class="m"><div class="l">${esc(monthLabel(m))}</div></div><div class="a"><button class="ghost small" data-a="paiunskip" data-m="${m}">Remettre à valider</button></div></div>`).join('')}${sk.length>1&&!sm?`<div style="margin-top:8px"><button class="ghost" style="width:100%" data-a="paiunskipall">Tout remettre à valider (${sk.length} mois)</button></div>`:''}</details>`;
+ return `<details class="fold" data-fold="paie-skips"${foldOpen('paie-skips',false)?' open':''} style="margin-top:12px"><summary><b>Mois ignorés (${sk.length})</b></summary><p class="s" style="margin-top:6px">Ces mois ne sont ni à valider ni validés. Remets-les dans « À valider » pour les saisir.</p>${bar}${sk.map(m=>sm?`<div class="row" data-a="paktog" data-m="${m}"><div style="font-size:20px;width:28px;flex:none" aria-hidden="true">${sm.has(m)?'☑':'☐'}</div><div class="m"><div class="l">${esc(monthLabel(m))}</div></div></div>`:`<div class="row"><div class="m"><div class="l">${esc(monthLabel(m))}</div></div><div class="a"><button class="ghost small" data-a="paiunskip" data-m="${m}">Remettre à valider</button></div></div>`).join('')}${sk.length>1&&!sm?`<div style="margin-top:8px"><button class="ghost" style="width:100%" data-a="paiunskipall">Tout remettre à valider (${sk.length} mois)</button></div>`:''}</details>`;
 }
 function paieHTML(){
  return `<div class="mnav"><button data-a="paieback" aria-label="Retour">‹</button><b>Bulletin de paye</b><span style="width:44px"></span></div>
  <p class="s" style="margin-top:0">Suivi seulement : cette page ne modifie aucun compte, solde ni budget.</p>
  ${paDueHTML()}
  ${paRangeHTML()}
- ${foldCard('paie-evo','Évolution (tableau)',paTableHTML(),true)}
- ${foldCard('paie-crb','Évolution (courbe)',paChartHTML(),true)}
+ ${foldCard('paie-evo','Évolution (tableau)',paTableHTML(),false)}
+ ${foldCard('paie-crb','Évolution (courbe)',paChartHTML(),false)}
  ${foldCard('paie-fiches','Fiches validées',paSlipsHTML()+paSkipsHTML(),false)}
- ${foldCard('paie-mod','Mon modèle de bulletin',paModelHTML(),!S.paie.lines.length)}`;
+ ${foldCard('paie-mod','Mon modèle de bulletin',paModelHTML(),false)}`;
 }
 
 /* --- fenêtres --- */
@@ -1320,7 +1320,7 @@ function openPaLine(id){
   <div class="pk2"><input id="pl_cappct" inputmode="decimal" placeholder="% (vide = aucun)" value="${d.cap?esc(paNum(d.cap.pct)):''}"><select id="pl_capline"><option value="">de la ligne…</option>${oth.map(o=>`<option value="${esc(o.id)}"${d.cap&&d.cap.line===o.id?' selected':''}>${esc(o.label)}</option>`).join('')}</select></div>
  </div>
  ${l?`<div id="pl_fromw" style="display:none"><label>Nouveau montant à partir du mois de${paPick('pl_from',monthOf(today()))}</label><label>Motif (facultatif : échelon, grade…)<input id="pl_note" placeholder="ex. Passage à l'échelon 5"></label><p class="s" style="margin-top:-6px">Ce mois et les suivants prennent la nouvelle valeur, fiches déjà validées comprises. Les mois d'avant gardent l'ancienne.</p></div>`:''}
- ${l&&l.hist&&l.hist.length?`<details class="fold" data-fold="paie-lh"${foldOpen('paie-lh',true)?' open':''} style="margin:8px 0"><summary>Historique des valeurs (${l.hist.length})</summary><p class="s" style="margin:6px 0">Valeur appliquée à partir de chaque mois. Une entrée ancienne avec une mauvaise valeur fausse les fiches de ces mois : supprime-la, les fiches de la ligne sont alors recalculées.</p>${l.hist.map((e,i)=>`<div class="row"><div class="m"><div class="l">${e.from==='0000-00'?'Au départ':'À partir de '+esc(paShort(e.from))}</div>${e.note?`<div class="s">${esc(e.note)}</div>`:''}</div><div class="a">${esc(paNum(e.amount))}</div><button type="button" class="ghost small" data-a="pahistdel" data-i="${i}" aria-label="Supprimer cette entrée" style="flex:none;margin-left:6px">✕</button></div>`).join('')}</details>`:''}
+ ${l&&l.hist&&l.hist.length?`<details class="fold" data-fold="paie-lh"${foldOpen('paie-lh',false)?' open':''} style="margin:8px 0"><summary>Historique des valeurs (${l.hist.length})</summary><p class="s" style="margin:6px 0">Valeur appliquée à partir de chaque mois. Une entrée ancienne avec une mauvaise valeur fausse les fiches de ces mois : supprime-la, les fiches de la ligne sont alors recalculées.</p>${l.hist.map((e,i)=>`<div class="row"><div class="m"><div class="l">${e.from==='0000-00'?'Au départ':'À partir de '+esc(paShort(e.from))}</div>${e.note?`<div class="s">${esc(e.note)}</div>`:''}</div><div class="a">${esc(paNum(e.amount))}</div><button type="button" class="ghost small" data-a="pahistdel" data-i="${i}" aria-label="Supprimer cette entrée" style="flex:none;margin-left:6px">✕</button></div>`).join('')}</details>`:''}
  <label>Première fiche${paPick('pl_start',d.start)}</label>
  <label>Dernière fiche (facultatif)${paPick('pl_end',d.end,true)}</label>
  <div class="btns"><button class="ghost" data-a="closem">Annuler</button><button class="primary" data-a="savepaline">Enregistrer</button></div>

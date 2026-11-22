@@ -40,6 +40,8 @@ def pick(pg, ident, ym):
 def ouvre_paie(pg):
     pg.click('[data-a=nav][data-v=rec]')
     pg.click('[data-a=openpaie]')
+    # les menus sont repliés de base : on les déplie pour que les tests voient leur contenu (test_replis_defaut vérifie l'état de départ)
+    pg.evaluate("() => { ['paie-evo', 'paie-crb', 'paie-fiches', 'paie-mod'].forEach((k) => { FOLD[k] = true; }); render(); }")
 
 
 def etat_paie(pg):
@@ -100,6 +102,8 @@ def test_parcours(browser):
     pg.click('[data-a=openpaie]')
     check('la vue Bulletin de paye s\'ouvre', pg.evaluate("() => view") == 'paie' and 'Bulletin de paye' in pg.inner_text('#app'))
     check('onglet Récurrent resté actif', pg.evaluate("() => document.querySelector('nav button.on').dataset.v") == 'rec')
+    check('menus repliés de base : tableau, courbe, fiches et modèle', pg.evaluate("() => ['paie-evo', 'paie-crb', 'paie-fiches', 'paie-mod'].map((k) => document.querySelector('details[data-fold=' + k + ']').open)") == [False, False, False, False])
+    pg.evaluate("() => { ['paie-evo', 'paie-crb', 'paie-fiches', 'paie-mod'].forEach((k) => { FOLD[k] = true; }); render(); }")
     check('sans ligne : pas de carte « À valider », consigne dans le modèle', 'À valider' not in pg.inner_text('#app') and 'Ajoute les lignes de ton bulletin' in norm(pg.inner_text('#app')))
     check('sans fiche : tableau vide', 'Aucune fiche validée' in pg.inner_text('#app'))
 
@@ -609,7 +613,10 @@ def test_mois_ignores(browser):
     ouvre_paie(pg)
     pg.evaluate("() => { FOLD['paie-fiches'] = true; render(); }")
     check('mois ignorés listés, seul le mois courant à valider', pg.evaluate("() => paDue()") == [m2] and 'Mois ignorés' in pg.inner_text('#app') and len(pg.query_selector_all('[data-a=paiunskip]')) == 2)
-    check('menu « Mois ignorés (2) » ouvert par défaut', 'Mois ignorés (2)' in pg.inner_text('#app') and pg.is_visible('[data-a=paiunskip][data-m="%s"]' % m0))
+    check('menu « Mois ignorés (2) » replié de base : titre visible, mois masqués', 'Mois ignorés (2)' in pg.inner_text('#app') and not pg.is_visible('[data-a=paiunskip][data-m="%s"]' % m0))
+    pg.click('details[data-fold="paie-skips"] > summary')
+    pg.wait_for_timeout(150)
+    check('menu ouvert : mois visibles', pg.is_visible('[data-a=paiunskip][data-m="%s"]' % m0))
     pg.click('details[data-fold="paie-skips"] > summary')
     pg.wait_for_timeout(150)
     check('menu refermé : les mois ignorés sont masqués, le titre reste', not pg.is_visible('[data-a=paiunskip][data-m="%s"]' % m0) and 'Mois ignorés (2)' in pg.inner_text('#app'))
@@ -875,6 +882,8 @@ def test_recalcul_toutes_fiches(browser):
     pg.click('[data-a=parecalcall]')
     check('ancien taux dans l\'historique : le recalcul garde la valeur fausse (6,9 % → 142,36)', pg.evaluate("(m) => S.paie.slips[m].rows.find((r) => r.k === 'c').amount", m0) == 142.36, pg.evaluate("(m) => S.paie.slips[m].rows.find((r) => r.k === 'c').amount", m0))
     pg.click('[data-a=paiedit][data-id="c"]')
+    check('historique des valeurs replié de base', pg.evaluate("() => document.querySelector('#modal details[data-fold=paie-lh]').open") is False)
+    pg.click('#modal details[data-fold=paie-lh] > summary')
     check('fenêtre de la ligne : historique visible avec 2 entrées', pg.locator('#modal [data-a=pahistdel]').count() == 2 and 'Au départ' in pg.inner_text('#modal'))
     pg.click('#modal [data-a=pahistdel][data-i="0"]')
     check('entrée de départ supprimée : fiche recalculée au taux de 2,4 % (49,52), historique à 1 entrée', pg.evaluate("(m) => S.paie.slips[m].rows.find((r) => r.k === 'c').amount", m0) == 49.52 and pg.locator('#modal [data-a=pahistdel]').count() == 1, pg.evaluate("(m) => S.paie.slips[m].rows.find((r) => r.k === 'c').amount", m0))

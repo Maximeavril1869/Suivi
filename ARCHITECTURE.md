@@ -179,7 +179,7 @@ Règles à tenir pour qu'aucune vue ni fenêtre ne dépasse l'écran (vérifié 
 ## Menus repliables de Réglages
 
 - Chaque carte de Réglages est un `<details class="card fold">` produit par `foldCard(clé, titre, contenu, ouvertParDéfaut)`. Dans la carte Comptes, chaque organisme (champ « Organisme / groupe » d'un compte) est un `<details class="fold grp">` de clé `g:<nom>` ; le titre du groupe garde son solde. Sans organisme, ou avec un seul groupe sans nom, la liste des comptes reste plate comme avant.
-- Clés des cartes : `comptes`, `budgets`, `paie`, `regles`, `sync`, `sauvegarde`, `danger`. Par défaut : tout est replié (cartes et groupes d'organismes).
+- Clés des cartes : `comptes`, `budgets`, `paie`, `regles`, `sync`, `sauvegarde`, `danger`. Règle générale : **tous** les menus repliables de l'app (Réglages, Accueil, module Bulletin de paye : tableau, courbe, fiches, modèle, mois ignorés, historiques) sont repliés par défaut ; aucun n'a de règle d'ouverture automatique (`foldOpen`/`foldCard` reçoivent `false`). Tout nouveau menu doit suivre cette règle.
 - **L'état ouvert / replié est propre à l'appareil** : objet `FOLD` dans le `localStorage` (clé `compte-replis`), hors de `S`, donc jamais synchronisé ni exporté. Il est mis à jour par l'événement `toggle` (écouteur global en capture, car cet événement ne remonte pas) et relu à chaque `render()`, ce qui évite qu'une reconstruction de l'écran referme un menu.
 - L'ouverture d'un menu n'est pas une modification : aucun appel à `save()`, donc pas de rappel de sauvegarde ni d'envoi vers la synchronisation.
 

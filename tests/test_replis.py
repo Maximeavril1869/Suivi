@@ -127,6 +127,7 @@ def test_sans_organisme(browser):
     pg.evaluate("([k, v]) => localStorage.setItem(k, JSON.stringify(v))", [T.KEY, s])
     pg.reload()
     pg.click('[data-a=nav][data-v=set]')
+    pg.evaluate("() => { FOLD['comptes'] = true; render(); }")   # carte repliée de base : on l'ouvre pour lire le titre du groupe
     check('les comptes sans organisme forment un groupe « Sans organisme »', 'Sans organisme' in pg.inner_text('details[data-fold="g:"] > summary'), etat_replis(pg))
     check('aucune erreur JavaScript', not pg.errors, pg.errors)
 
