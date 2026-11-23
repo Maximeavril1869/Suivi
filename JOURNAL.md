@@ -3,6 +3,12 @@
 Journal des opérations réalisées sur le projet, à relire pour savoir où il en est.
 Les entrées les plus récentes sont en haut. À chaque intervention, ajouter une entrée datée.
 
+## 2026-11-23 (suite) — Modèle : lignes archivées (version 69)
+
+- Demande : une ligne pour laquelle une date de dernière fiche est renseignée doit être archivée dans un menu dépliable. Choix validés : archivage dès que la date est renseignée (pas d'attente du mois), menu « Lignes archivées (n) » replié de base (clé `paie-arch`), lignes archivées modifiables en les touchant, réactivation en effaçant la date, mode « Sélectionner » listant aussi les archives (menu alors déplié), pas de flèches ▲▼ dans les archives, tableau d'évolution et fiches inchangés.
+- Détail : `paModelHTML` sépare lignes actives / archivées ; `paMove` n'échange qu'entre lignes non archivées.
+- Test : `test_archives` (menu replié, séparation, sans flèches, déplacement entre actives, sélection, réactivation, menu absent sans archive). test_paie 355. Service worker `compte-v69`.
+
 ## 2026-11-23 (suite) — Historique d'une ligne fixe : fiches corrigées à la suppression (version 68)
 
 - Constat : supprimer une entrée de l'« Historique des valeurs » d'une ligne à montant fixe ne touchait pas les fiches validées (seul le recalcul des lignes calculées existait). Cas réel : montant erroné saisi par erreur lors d'un changement de valeur, resté dans toutes les fiches.

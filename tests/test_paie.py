@@ -934,6 +934,34 @@ def test_recalcul_toutes_fiches(browser):
     check('aucune erreur JavaScript', not pg.errors, pg.errors)
 
 
+def test_archives(browser):
+    print('Modèle : lignes avec dernière fiche renseignée archivées dans un menu replié')
+    pg = device(browser, FauxSupabase())
+    depart(pg)
+    ouvre_paie(pg)
+    m0 = mois(pg, -3)
+    pg.evaluate("""(m0) => {
+      const mk = (id, label, kind, amount, end) => ({ id, label, kind, amount, start: m0, end: end || '', mode: 'fixed' });
+      S.paie.lines = [mk('a', 'Ligne active A', 'gain', 100), mk('v', 'Ancienne prime', 'gain', 50, m0), mk('b', 'Ligne active B', 'gain', 200), mk('r', 'Ancienne retenue', 'ret', 10, m0)];
+      S.paie.slips = {};
+      FOLD['paie-mod'] = true; delete FOLD['paie-arch']; render();
+    }""", m0)
+    check('menu « Lignes archivées (2) » présent et replié de base', pg.evaluate("() => { const d = document.querySelector('details[data-fold=paie-arch]'); return !!d && d.open === false && d.querySelector('summary').textContent.includes('(2)'); }"))
+    check('lignes archivées hors de la liste normale', pg.evaluate("() => [...document.querySelectorAll('details[data-fold=paie-mod] > .row .l')].map((e) => e.textContent).filter((t) => t.startsWith('Ligne') || t.startsWith('Ancienne'))") == ['Ligne active A', 'Ligne active B'])
+    check('archives : lignes des deux types listées, sans flèches', pg.evaluate("() => { const d = document.querySelector('details[data-fold=paie-arch]'); return d.querySelectorAll('.row').length === 2 && d.querySelectorAll('[data-a=pamove]').length === 0; }"))
+    pg.click('[data-a=pamove][data-id="a"][data-d="1"]')
+    ordre = pg.evaluate("() => S.paie.lines.map((l) => l.id)")
+    check('flèche ▼ : échange avec la ligne active suivante, jamais avec une archive', ordre.index('b') < ordre.index('a'), ordre)
+    pg.click('[data-a=palsel]')
+    check('mode sélection : archives dépliées et sélectionnables', pg.evaluate("() => document.querySelector('details[data-fold=paie-arch]').open") is True and pg.locator('details[data-fold=paie-arch] [data-a=paltog]').count() == 2)
+    pg.click('[data-a=palselend]')
+    pg.evaluate("() => { S.paie.lines.find((l) => l.id === 'v').end = ''; render(); }")
+    check('date effacée : la ligne revient dans la liste normale, archives (1)', pg.evaluate("() => document.querySelector('details[data-fold=paie-arch] summary').textContent.includes('(1)')"))
+    pg.evaluate("() => { S.paie.lines.find((l) => l.id === 'r').end = ''; render(); }")
+    check('plus aucune archive : menu absent', pg.locator('details[data-fold=paie-arch]').count() == 0)
+    check('aucune erreur JavaScript', not pg.errors, pg.errors)
+
+
 def test_bulletin_reel(browser):
     print('Bulletin réel : rappel de CSG (ponctuelle soumise) et transfert primes/points négatif')
     pg = device(browser, FauxSupabase())
@@ -1341,6 +1369,7 @@ def main():
         test_proratisation(browser)
         test_tableau_totaux(browser)
         test_tableau_repli(browser)
+        test_archives(browser)
         test_ligne_dans_fiches_existantes(browser)
         test_net_calcule(browser)
         test_totaux_fiche(browser)

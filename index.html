@@ -134,7 +134,7 @@ const KEY='compte-salaire-v1';
 /* Épargne bloquée et Bien : comptent dans le patrimoine net seulement. Jamais dans le reste à vivre, le budget du jour, les soldes des comptes cochés ni « Sortir du découvert », et on n'y saisit pas de lignes : on met à jour leur valeur (solde de référence). */
 const ILLIQ={bloque:1,bien:1};
 const isLiquid=a=>!ILLIQ[a.type];
-const APP_VERSION='68';   // identique au numéro de la constante V de sw.js (compte-v62) : à incrémenter ensemble à chaque livraison
+const APP_VERSION='69';   // identique au numéro de la constante V de sw.js (compte-v62) : à incrémenter ensemble à chaque livraison
 const CATS={
  'Revenus':['Salaire','Primes','Remboursements','Intérêts','Autres revenus'],
  'Logement':['Loyer / crédit','Charges','Énergie','Internet / téléphone','Assurance habitation','Travaux / mobilier'],
@@ -1013,7 +1013,7 @@ function paDelLines(ids,inSlips){
 }
 function paMove(id,d){
  const L=S.paie.lines,i=L.findIndex(l=>l.id===id);if(i<0)return;
- const same=paOrdered().filter(l=>l.kind===L[i].kind),k=same.findIndex(l=>l.id===id),o=same[k+d];if(!o)return;
+ const same=paOrdered().filter(l=>l.kind===L[i].kind&&!l.end),k=same.findIndex(l=>l.id===id),o=same[k+d];if(!o)return;
  const j=L.indexOf(o);[L[i],L[j]]=[L[j],L[i]];
 }
 function paChange(hist,cur,from,amt,note){
@@ -1142,14 +1142,18 @@ function paSlipsHTML(){
  }).join('');
 }
 function paModelHTML(){
- const L=paOrdered(),now=monthOf(today()),same=l=>L.filter(x=>x.kind===l.kind);
+ const L=paOrdered(),now=monthOf(today()),same=l=>L.filter(x=>x.kind===l.kind&&!x.end);
  const cmp=paCompute(now),nm=Object.fromEntries(L.map(x=>[x.id,x.label]));
  const how=l=>l.mode==='points'?paNum(paAmt(l,now))+' points · ':l.mode==='acf'?paNum(paAmt(l,now))+' points ACF · ':l.mode==='rate'?paNum(paAmt(l,now))+' % de '+((l.base||[]).map(i=>nm[i]).filter(Boolean).join(' + ')||'(base vide)')+(l.coef!==100?' × '+paNum(l.coef)+' %':'')+(l.xp?' + ponctuelles soumises':'')+(l.cap&&nm[l.cap.line]?' · max '+paNum(l.cap.pct)+' % de '+nm[l.cap.line]:'')+' · ':'';
  const pt=paAmt(S.paie.pt,now);
  const ptRow=`<div class="row" data-a="papoint"><div class="m"><div class="l">Valeur du point d'indice</div><div class="s">Annuelle, base indice 100 · lignes « points »</div></div><div class="a">${pt>0?paFmt(pt):'à saisir'}</div></div>`;
  const acf=paAmt(S.paie.acf,now),acfRow=`<div class="row" data-a="paacf"><div class="m"><div class="l">Valeur du point ACF</div><div class="s">Annuelle, par point · lignes « points ACF »</div></div><div class="a">${acf>0?paFmt(acf):'à saisir'}</div></div>`;
  const sl=paSelL,bar=!L.length?'':sl?`<p class="s" style="margin:6px 0 0">Touche les lignes à supprimer du modèle. Les fiches déjà validées sont conservées.</p><div class="btns" style="margin:6px 0"><button class="ghost small" data-a="palselall">${sl.size===L.length?'Tout désélectionner':'Tout sélectionner'}</button><button class="ghost small" data-a="palselend">Annuler</button><button class="danger small" data-a="paldel" ${sl.size?'':'disabled'}>Supprimer (${sl.size})</button></div>`:'<div style="text-align:right;margin:4px 0"><button class="ghost small" data-a="palsel">Sélectionner</button></div>';
- const rows=bar+(sl?'':ptRow+acfRow)+(L.map(l=>`<div class="row" data-a="${sl?'paltog':'paiedit'}" data-id="${esc(l.id)}">${sl?`<div style="font-size:20px;width:28px;flex:none" aria-hidden="true">${sl.has(l.id)?'☑':'☐'}</div>`:''}<div class="m"><div class="l">${esc(l.label)}</div><div class="s">${esc(PA_KINDS[l.kind])} · ${esc(how(l))}depuis ${esc(paShort(l.start))}${l.end?' · jusqu\'à '+esc(paShort(l.end)):''}</div></div><div class="a">${paFmt(cmp[l.id])}</div>${sl?'':`<div class="pa-mv"><button class="ghost" data-a="pamove" data-id="${esc(l.id)}" data-d="-1" aria-label="Monter"${same(l)[0]===l?' disabled':''}>▲</button><button class="ghost" data-a="pamove" data-id="${esc(l.id)}" data-d="1" aria-label="Descendre"${same(l).slice(-1)[0]===l?' disabled':''}>▼</button></div>`}</div>`).join('')||'<p class="mut" style="margin-top:8px">Aucune ligne. Ajoute les lignes de ton bulletin (traitement de base, indemnités, cotisations, impôt, brut, net à payer…) : elles se répéteront chaque mois jusqu\'à ce que tu en changes le montant.</p>');
+ const rowOf=(l,arch)=>`<div class="row" data-a="${sl?'paltog':'paiedit'}" data-id="${esc(l.id)}">${sl?`<div style="font-size:20px;width:28px;flex:none" aria-hidden="true">${sl.has(l.id)?'☑':'☐'}</div>`:''}<div class="m"><div class="l">${esc(l.label)}</div><div class="s">${esc(PA_KINDS[l.kind])} · ${esc(how(l))}depuis ${esc(paShort(l.start))}${l.end?' · jusqu\'à '+esc(paShort(l.end)):''}</div></div><div class="a">${paFmt(cmp[l.id])}</div>${sl||arch?'':`<div class="pa-mv"><button class="ghost" data-a="pamove" data-id="${esc(l.id)}" data-d="-1" aria-label="Monter"${same(l)[0]===l?' disabled':''}>▲</button><button class="ghost" data-a="pamove" data-id="${esc(l.id)}" data-d="1" aria-label="Descendre"${same(l).slice(-1)[0]===l?' disabled':''}>▼</button></div>`}</div>`;
+ const act=L.filter(l=>!l.end),arc=L.filter(l=>l.end);
+ const archOpen=!!sl||foldOpen('paie-arch',false);
+ const archHTML=arc.length?`<details class="fold grp" data-fold="paie-arch"${archOpen?' open':''}><summary><b>Lignes archivées (${arc.length})</b></summary><p class="s" style="margin:6px 0">Lignes dont la dernière fiche est renseignée. Efface cette date dans la ligne pour la réactiver.</p>${arc.map(l=>rowOf(l,true)).join('')}</details>`:'';
+ const rows=bar+(sl?'':ptRow+acfRow)+(act.map(l=>rowOf(l,false)).join('')||(arc.length?'':'<p class="mut" style="margin-top:8px">Aucune ligne. Ajoute les lignes de ton bulletin (traitement de base, indemnités, cotisations, impôt, brut, net à payer…) : elles se répéteront chaque mois jusqu\'à ce que tu en changes le montant.</p>'))+archHTML;
  return rows+'<div style="margin-top:10px"><button class="primary" data-a="paiaddline">Ajouter une ligne</button></div>'+(L.some(paIsCalc)&&paSlipMonths().length?'<div style="margin-top:10px"><button class="ghost" style="width:100%" data-a="parecalcall">Recalculer toutes les fiches validées</button><p class="s" style="margin:4px 0 0">Remet à jour les lignes calculées (points, taux) de chaque fiche d\'après le modèle. Les lignes fixes et les ponctuelles ne changent pas.</p></div>':'');
 }
 function paSkipsHTML(){
