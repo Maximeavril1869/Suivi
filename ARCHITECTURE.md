@@ -238,5 +238,5 @@ Le service worker ignore désormais les requêtes vers d'autres adresses (aucun 
 
 ## Affichage en paysage
 
-- Règle CSS unique, au début de la feuille de style : `@media (orientation:landscape) and (min-width:700px)`. Elle élargit `#app` (1 180 px maximum), ajoute les marges d'encoche (`env(safe-area-inset-left/right)`) à `#app` et à la barre d'onglets, range les cartes sur deux colonnes (`column-count:2`, `break-inside:avoid` sur les enfants directs de `#app`) et laisse sur toute la largeur les titres, `.mnav`, `.pseg` et les paragraphes d'aide (`column-span:all`). Le portrait n'est pas touché.
-- Tout nouvel élément placé directement dans `#app` doit tenir dans une colonne ou recevoir `column-span:all`. `test_debordements.py` vérifie les trois tailles de `PAYSAGES` (844 × 390, 1 024 × 768, 1 194 × 834).
+- Règle CSS unique, au début de la feuille de style : `@media (orientation:landscape) and (min-width:700px)`. Elle élargit `#app` (1 180 px maximum), ajoute les marges d'encoche (`env(safe-area-inset-left/right)`) à `#app` et à la barre d'onglets et élargit les fenêtres de saisie (760 px). **Une seule colonne** (choix de l'utilisateur : les deux colonnes essayées en version 65 ont été retirées). Le portrait n'est pas touché.
+- `test_debordements.py` vérifie les trois tailles de `PAYSAGES` (844 × 390, 1 024 × 768, 1 194 × 834).

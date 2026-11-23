@@ -228,15 +228,15 @@ def fenetres(pg, largeur):
 
 
 def paysage(pg, largeur):
-    # en paysage : l'app remplit l'écran (plus de colonne étroite de 640 px) et range les cartes sur deux colonnes
+    # en paysage : l'app remplit l'écran (plus de colonne étroite de 640 px), toujours en une seule colonne
     nav(pg, 'set')
     pg.evaluate("() => { Object.keys(FOLD).concat(['comptes', 'budgets', 'paie', 'regles', 'sync', 'sauvegarde', 'danger']).forEach((k) => { FOLD[k] = true; }); render(); }")
     larg = pg.evaluate("() => document.getElementById('app').getBoundingClientRect().width")
     cols = pg.evaluate("() => getComputedStyle(document.getElementById('app')).columnCount")
     check('%d px paysage — l\'app dépasse 640 px de large (%d px)' % (largeur, larg), larg > 700, larg)
-    check('%d px paysage — cartes sur deux colonnes' % largeur, cols == '2', cols)
+    check('%d px paysage — une seule colonne' % largeur, cols == 'auto', cols)
     x = pg.evaluate("() => [...document.querySelectorAll('#app > details.card')].map((e) => Math.round(e.getBoundingClientRect().left))")
-    check('%d px paysage — les cartes de Réglages occupent bien deux colonnes' % largeur, len(set(x)) == 2, x)
+    check('%d px paysage — les cartes de Réglages sont toutes alignées à gauche' % largeur, len(set(x)) == 1, x)
 
 
 def test_largeur(browser, largeur, x=1, hauteur=844):

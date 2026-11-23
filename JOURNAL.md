@@ -3,6 +3,10 @@
 Journal des opérations réalisées sur le projet, à relire pour savoir où il en est.
 Les entrées les plus récentes sont en haut. À chaque intervention, ajouter une entrée datée.
 
+## 2026-11-23 (suite) — Paysage : une seule colonne (version 66)
+
+- Demande : « je ne veux qu'une colonne ». Fait : retrait du rangement sur deux colonnes ; l'app reste pleine largeur en paysage (1 180 px max, encoches respectées), cartes empilées. Test adapté (une seule colonne, cartes alignées). Service worker `compte-v66`.
+
 ## 2026-11-23 — Affichage en paysage (version 65)
 
 - Demande : « en paysage, que ça s'adapte à la taille de l'écran ». Constat : `#app` était plafonné à 640 px, donc une colonne étroite centrée dans un écran large.
