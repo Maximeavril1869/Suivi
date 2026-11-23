@@ -134,7 +134,7 @@ const KEY='compte-salaire-v1';
 /* Épargne bloquée et Bien : comptent dans le patrimoine net seulement. Jamais dans le reste à vivre, le budget du jour, les soldes des comptes cochés ni « Sortir du découvert », et on n'y saisit pas de lignes : on met à jour leur valeur (solde de référence). */
 const ILLIQ={bloque:1,bien:1};
 const isLiquid=a=>!ILLIQ[a.type];
-const APP_VERSION='69';   // identique au numéro de la constante V de sw.js (compte-v62) : à incrémenter ensemble à chaque livraison
+const APP_VERSION='70';   // identique au numéro de la constante V de sw.js (compte-v62) : à incrémenter ensemble à chaque livraison
 const CATS={
  'Revenus':['Salaire','Primes','Remboursements','Intérêts','Autres revenus'],
  'Logement':['Loyer / crédit','Charges','Énergie','Internet / téléphone','Assurance habitation','Travaux / mobilier'],
@@ -1135,11 +1135,15 @@ function paSlipsHTML(){
  if(sm){
   h+=`<p class="s" style="margin-top:0">Touche les fiches à supprimer. À la suppression, tu choisis de remettre les mois à valider ou de les ignorer.</p><div class="btns" style="margin-bottom:6px"><button class="ghost small" data-a="paiselall">${sm.size===ms.length?'Tout désélectionner':'Tout sélectionner'}</button><button class="ghost small" data-a="paiselend">Annuler</button><button class="danger small" data-a="paidel" ${sm.size?'':'disabled'}>Supprimer (${sm.size})</button></div>`;
  }else h+=`<div style="text-align:right;margin-bottom:4px"><button class="ghost small" data-a="paisel">Sélectionner</button></div>`;
- return h+ms.slice().reverse().map(m=>{
+ const rowM=m=>{
   const rows=S.paie.slips[m].rows,on=sm&&sm.has(m),ok=rows.some(r=>r.kind==='gain');
   const t=paSums(rows);
   return `<div class="row pa-fl" data-a="${sm?'paitog':'paislip'}" data-m="${m}">${sm?`<div style="font-size:20px;width:28px;flex:none" aria-hidden="true">${on?'☑':'☐'}</div>`:''}<div class="m"><div class="l">${esc(monthLabel(m))}</div><div class="s">${rows.length} ligne${rows.length>1?'s':''}</div></div>${ok?`<div class="a"><b>${t.ratio===null?'—':paNum(t.ratio.toFixed(1))+' %'}</b><div class="s">Retenues / brut</div></div>`:`<div class="a"><span class="mut">—</span><div class="s">Net à payer</div></div>`}${ok?`<div class="pa-sum"><div><div class="s">Brut</div><b>${paFmt(t.brut)} €</b></div><div><div class="s">Net avant impôt</div><b>${paFmt(t.avant)} €</b></div><div><div class="s">Net à payer</div><b>${paFmt(t.net)} €</b></div></div>`:''}</div>`;
- }).join('');
+ };
+ /* un menu repliable par année (plus récente d'abord) ; année en cours dépliée de base, tout déplié en mode sélection */
+ const yrs=[...new Set(ms.map(m=>m.slice(0,4)))].sort().reverse(),cy=today().slice(0,4);
+ return h+yrs.map(y=>{const l=ms.filter(m=>m.slice(0,4)===y).reverse(),k='paie-an-'+y;
+  return `<details class="fold grp" data-fold="${k}"${sm||foldOpen(k,y===cy)?' open':''}><summary><b>${y}</b><span class="s">${l.length} fiche${l.length>1?'s':''}</span></summary>${l.map(rowM).join('')}</details>`;}).join('');
 }
 function paModelHTML(){
  const L=paOrdered(),now=monthOf(today()),same=l=>L.filter(x=>x.kind===l.kind&&!x.end);

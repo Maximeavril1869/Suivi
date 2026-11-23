@@ -41,7 +41,7 @@ def ouvre_paie(pg):
     pg.click('[data-a=nav][data-v=rec]')
     pg.click('[data-a=openpaie]')
     # les menus sont repliés de base : on les déplie pour que les tests voient leur contenu (test_replis_defaut vérifie l'état de départ)
-    pg.evaluate("() => { ['paie-evo', 'paie-crb', 'paie-fiches', 'paie-mod', 'pt-gain', 'pt-ret'].forEach((k) => { FOLD[k] = true; }); render(); }")
+    pg.evaluate("() => { ['paie-evo', 'paie-crb', 'paie-fiches', 'paie-mod', 'pt-gain', 'pt-ret'].forEach((k) => { FOLD[k] = true; }); for (let y = 2000; y < 2100; y++) FOLD['paie-an-' + y] = true; render(); }")
 
 
 def etat_paie(pg):
@@ -962,6 +962,35 @@ def test_archives(browser):
     check('aucune erreur JavaScript', not pg.errors, pg.errors)
 
 
+def test_annees(browser):
+    print('Fiches validées : un menu repliable par année')
+    pg = device(browser, FauxSupabase())
+    depart(pg)
+    ouvre_paie(pg)
+    an = int(pg.evaluate("() => today().slice(0, 4)"))
+    ms = [f'{an - 2}-11', f'{an - 2}-12', f'{an - 1}-03', f'{an}-01', f'{an}-02']
+    pg.evaluate("""(ms) => {
+      S.paie.lines = [{ id: 'g', label: 'Traitement', kind: 'gain', amount: 1000, start: ms[0], end: '', mode: 'fixed' }];
+      S.paie.slips = {}; S.paie.skips = [];
+      ms.forEach((m) => { S.paie.slips[m] = { rows: [{ k: 'g', label: 'Traitement', kind: 'gain', amount: 1000 }] }; });
+      FOLD['paie-fiches'] = true; Object.keys(FOLD).filter((k) => k.startsWith('paie-an-')).forEach((k) => delete FOLD[k]); render();
+    }""", ms)
+    etat = pg.evaluate("() => [...document.querySelectorAll('details[data-fold^=paie-an-]')].map((d) => [d.dataset.fold, d.open, d.querySelector('summary').textContent])")
+    check('trois menus, du plus récent au plus ancien, avec le nombre de fiches', [e[0] for e in etat] == [f'paie-an-{an}', f'paie-an-{an - 1}', f'paie-an-{an - 2}'] and ['2 fiches' in etat[0][2], '1 fiche' in etat[1][2] and '1 fiches' not in etat[1][2], '2 fiches' in etat[2][2]] == [True, True, True], etat)
+    check('année en cours dépliée, les autres repliées', [e[1] for e in etat] == [True, False, False], etat)
+    check('dans une année : fiche la plus récente d\'abord', pg.evaluate("(an) => [...document.querySelectorAll('details[data-fold=paie-an-' + an + '] .row .l')].map((e) => e.textContent)", an)[0].lower().startswith(('févr', 'janv')) is True)
+    pg.evaluate("(an) => { document.querySelector('details[data-fold=paie-an-' + (an - 2) + ']').open = true; }", an)
+    pg.evaluate("() => render()")
+    check('état d\'une année conservé après nouveau rendu', pg.evaluate("(an) => document.querySelector('details[data-fold=paie-an-' + (an - 2) + ']').open", an) is True)
+    pg.evaluate("(an) => { document.querySelector('details[data-fold=paie-an-' + (an - 2) + ']').open = false; }", an)
+    pg.click('[data-a=paisel]')
+    check('mode sélection : toutes les années dépliées', pg.evaluate("() => [...document.querySelectorAll('details[data-fold^=paie-an-]')].every((d) => d.open)"))
+    pg.click('[data-a=paiselall]')
+    check('tout sélectionner : 5 fiches cochées toutes années', pg.evaluate("() => paSelM.size") == 5)
+    pg.click('[data-a=paiselend]')
+    check('aucune erreur JavaScript', not pg.errors, pg.errors)
+
+
 def test_bulletin_reel(browser):
     print('Bulletin réel : rappel de CSG (ponctuelle soumise) et transfert primes/points négatif')
     pg = device(browser, FauxSupabase())
@@ -1370,6 +1399,7 @@ def main():
         test_tableau_totaux(browser)
         test_tableau_repli(browser)
         test_archives(browser)
+        test_annees(browser)
         test_ligne_dans_fiches_existantes(browser)
         test_net_calcule(browser)
         test_totaux_fiche(browser)

@@ -3,6 +3,12 @@
 Journal des opérations réalisées sur le projet, à relire pour savoir où il en est.
 Les entrées les plus récentes sont en haut. À chaque intervention, ajouter une entrée datée.
 
+## 2026-11-23 (suite) — Fiches validées : un menu par année (version 70)
+
+- Demande : un menu repliable par année dans les fiches validées. Choix validés : année en cours dépliée de base, les autres repliées ; titre « année + nombre de fiches » ; fiches du plus récent au plus ancien ; mode « Sélectionner » : tous les menus dépliés. État de chaque année conservé sur l'appareil (clés `paie-an-AAAA` de `FOLD`).
+- Questions posées en même temps : explication des deux « Recalculer » (fiche ouverte = formulaire, rien d'enregistré avant validation ; « toutes les fiches validées » = enregistré tout de suite) ; la question « Ignorer aussi ? » à la suppression d'une fiche est conservée telle quelle (décision : « on ne touche à rien »).
+- Test : `test_annees` (3 années, ordre, ouverture par défaut, état conservé, sélection) ; `ouvre_paie` déplie toutes les années pour que les tests ne dépendent pas de l'année en cours. test_paie 362. Service worker `compte-v70`.
+
 ## 2026-11-23 (suite) — Modèle : lignes archivées (version 69)
 
 - Demande : une ligne pour laquelle une date de dernière fiche est renseignée doit être archivée dans un menu dépliable. Choix validés : archivage dès que la date est renseignée (pas d'attente du mois), menu « Lignes archivées (n) » replié de base (clé `paie-arch`), lignes archivées modifiables en les touchant, réactivation en effaçant la date, mode « Sélectionner » listant aussi les archives (menu alors déplié), pas de flèches ▲▼ dans les archives, tableau d'évolution et fiches inchangés.
