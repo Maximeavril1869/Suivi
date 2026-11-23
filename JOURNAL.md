@@ -3,6 +3,12 @@
 Journal des opérations réalisées sur le projet, à relire pour savoir où il en est.
 Les entrées les plus récentes sont en haut. À chaque intervention, ajouter une entrée datée.
 
+## 2026-11-23 (suite) — Historique d'une ligne fixe : fiches corrigées à la suppression (version 68)
+
+- Constat : supprimer une entrée de l'« Historique des valeurs » d'une ligne à montant fixe ne touchait pas les fiches validées (seul le recalcul des lignes calculées existait). Cas réel : montant erroné saisi par erreur lors d'un changement de valeur, resté dans toutes les fiches.
+- Fait : à la suppression, les fiches validées de la ligne dont le montant est celui d'avant suppression (proratisation de la fiche comprise) prennent le nouveau montant ; celles dont le montant a été saisi à la main (autre valeur) restent inchangées. Le message de confirmation l'explique et un compte rendu indique le nombre de fiches corrigées. Lignes calculées : comportement inchangé (recalcul).
+- Test : cas ligne fixe (2 500 erroné → 2 000 sur deux fiches, fiche à 2 300 conservée). test_paie 347. Service worker `compte-v68`.
+
 ## 2026-11-23 (suite) — Tableau d'évolution : gains et retenues repliés (version 67)
 
 - Demande : « Replié gain et retenue dans évolution (tableau) ». Fait : dans le tableau d'évolution du bulletin, les lignes de gains et les lignes de retenues sont repliées de base ; on touche l'en-tête « ▸ Gain » ou « ▸ Retenue » pour les déplier (▾). Les lignes « Total des gains », « Total des retenues » et « Net calculé » (avec leur colonne Total) restent toujours visibles, ainsi que la section « Total / information ». Chaque en-tête garde son état sur l'appareil (clés `pt-gain` et `pt-ret` de `FOLD`, hors données synchronisées).

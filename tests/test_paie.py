@@ -915,6 +915,22 @@ def test_recalcul_toutes_fiches(browser):
     check('fenêtre de la ligne : historique visible avec 2 entrées', pg.locator('#modal [data-a=pahistdel]').count() == 2 and 'Au départ' in pg.inner_text('#modal'))
     pg.click('#modal [data-a=pahistdel][data-i="0"]')
     check('entrée de départ supprimée : fiche recalculée au taux de 2,4 % (49,52), historique à 1 entrée', pg.evaluate("(m) => S.paie.slips[m].rows.find((r) => r.k === 'c').amount", m0) == 49.52 and pg.locator('#modal [data-a=pahistdel]').count() == 1, pg.evaluate("(m) => S.paie.slips[m].rows.find((r) => r.k === 'c').amount", m0))
+    # ligne à montant fixe : supprimer l'entrée erronée corrige les fiches au montant erroné, pas celles saisies à la main
+    pg.evaluate("() => closeModal()")
+    ma, mb, mc = mois(pg, -2), mois(pg, -1), mois(pg, 0)
+    pg.evaluate("""([ma, mb, mc]) => {
+      const f = { id: 'f', label: 'Indemnité test', kind: 'gain', amount: 2500, start: ma, end: '', mode: 'fixed', hist: [{ from: '0000-00', amount: 2000 }, { from: ma, amount: 2500 }] };
+      S.paie.lines = [f];
+      S.paie.slips = {};
+      [[ma, 2500], [mb, 2500], [mc, 2300]].forEach(([m, a]) => { S.paie.slips[m] = { rows: [{ k: 'f', label: 'Indemnité test', kind: 'gain', amount: a }] }; });
+      render();
+    }""", [ma, mb, mc])
+    pg.click('[data-a=paiedit][data-id="f"]')
+    pg.evaluate("() => { document.querySelector('#modal details[data-fold=paie-lh]').open = true; }")
+    pg.click('#modal [data-a=pahistdel][data-i="1"]')
+    mt = pg.evaluate("() => Object.values(S.paie.slips).map((s) => s.rows[0].amount)")
+    check('ligne fixe : entrée erronée supprimée, fiches au montant erroné corrigées (2 500 → 2 000), fiche saisie à la main conservée (2 300)', mt == [2000, 2000, 2300], mt)
+    check('ligne fixe : historique à 1 entrée', pg.evaluate("() => S.paie.lines[0].hist.length") == 1)
     check('aucune erreur JavaScript', not pg.errors, pg.errors)
 
 

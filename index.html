@@ -134,7 +134,7 @@ const KEY='compte-salaire-v1';
 /* Épargne bloquée et Bien : comptent dans le patrimoine net seulement. Jamais dans le reste à vivre, le budget du jour, les soldes des comptes cochés ni « Sortir du découvert », et on n'y saisit pas de lignes : on met à jour leur valeur (solde de référence). */
 const ILLIQ={bloque:1,bien:1};
 const isLiquid=a=>!ILLIQ[a.type];
-const APP_VERSION='67';   // identique au numéro de la constante V de sw.js (compte-v62) : à incrémenter ensemble à chaque livraison
+const APP_VERSION='68';   // identique au numéro de la constante V de sw.js (compte-v62) : à incrémenter ensemble à chaque livraison
 const CATS={
  'Revenus':['Salaire','Primes','Remboursements','Intérêts','Autres revenus'],
  'Logement':['Loyer / crédit','Charges','Énergie','Internet / téléphone','Assurance habitation','Travaux / mobilier'],
@@ -937,6 +937,10 @@ const paIsCalc=l=>(l.mode||'fixed')!=='fixed';
 const paXsOf=rows=>(rows||[]).filter(r=>r.rated).map(r=>({kind:r.kind,amount:r.amount}));
 function paRowsFromModel(ym){const c=paCompute(ym);return S.paie.lines.filter(l=>paActive(l,ym)).map(l=>({k:l.id,label:l.label,kind:l.kind,amount:c[l.id]}));}
 /* Recalcule, dans une fiche validée, les lignes calculées (ou seulement celles de ids) ; les lignes fixes gardent le montant de la fiche, une ligne absente de la fiche compte 0. */
+/* Ligne fixe : montant attendu par mois dans les fiches avant / après suppression d'une entrée d'historique (proratisé comme à la validation) ; seules les fiches au montant attendu sont corrigées, les montants saisis à la main restent. */
+const paFixedAmt=(l,m)=>{const q=paQ(m,(S.paie.slips[m]||{}).pr);const a=paAmt(l,m);return q<1?paR2(a*q):a;};
+function paFixedBefore(l){const o={};Object.keys(S.paie.slips).forEach(m=>{const r=S.paie.slips[m].rows.find(x=>x.k===l.id);if(r)o[m]=[r.amount,paFixedAmt(l,m)];});return o;}
+function paFixedAfter(l,fx){let n=0;Object.keys(fx).forEach(m=>{const r=S.paie.slips[m]&&S.paie.slips[m].rows.find(x=>x.k===l.id);if(!r)return;const[cur,exp]=fx[m];if(Math.abs(cur-exp)>=0.005)return;const nw=paFixedAmt(l,m);if(Math.abs(nw-cur)>=0.005){r.amount=nw;n++;}});return n;}
 function paRecalcMonth(m,ids){
  const sl=S.paie.slips[m];if(!sl)return;
  const ov={},upd=new Set();
@@ -1799,7 +1803,7 @@ function act(a,ds,el){
  else if(a==='paacf')openPaPt('acf');
  else if(a==='savepapt')savePaPt();
  else if(a==='parecalc')paRecalcForm();
- else if(a==='pahistdel'){const l=S.paie.lines.find(x=>x.id===txCtx.plid),i=Number(ds.i);if(l&&l.hist&&l.hist[i]&&confirm('Supprimer cette entrée de l\'historique ? Les fiches de la ligne seront recalculées (lignes calculées).')){l.hist.splice(i,1);if(!l.hist.length)delete l.hist;l.amount=paAmt(l,monthOf(today()));if(paIsCalc(l))paRecalcSlips('0000-00',new Set([l.id]));save();openPaLine(l.id);render();}}
+ else if(a==='pahistdel'){const l=S.paie.lines.find(x=>x.id===txCtx.plid),i=Number(ds.i);if(l&&l.hist&&l.hist[i]&&confirm('Supprimer cette entrée de l\'historique ? '+(paIsCalc(l)?'Les fiches de la ligne seront recalculées.':'Les fiches validées dont le montant de cette ligne est celui de l\'historique avant suppression seront corrigées ; celles saisies à la main avec un autre montant restent inchangées.'))){const fx=paFixedBefore(l);l.hist.splice(i,1);if(!l.hist.length)delete l.hist;l.amount=paAmt(l,monthOf(today()));let n=0;if(paIsCalc(l))paRecalcSlips('0000-00',new Set([l.id]));else n=paFixedAfter(l,fx);save();openPaLine(l.id);render();if(!paIsCalc(l))alert(n?n+' fiche'+(n>1?'s':'')+' corrigée'+(n>1?'s':'')+'.':'Aucune fiche à corriger.');}}
  else if(a==='parecalcall'){const n=paSlipMonths().length;if(n&&confirm('Recalculer les lignes calculées des '+n+' fiche'+(n>1?'s':'')+' validée'+(n>1?'s':'')+' d\'après le modèle ? Un montant calculé corrigé à la main dans une fiche sera remplacé.')){const c=paRecalcAll();save();render();alert(c?c+' montant'+(c>1?'s':'')+' modifié'+(c>1?'s':'')+'.':'Aucun montant modifié : les fiches étaient déjà à jour.');}}
  else if(a==='paiedit')openPaLine(ds.id);
  else if(a==='savepaline')savePaLine();
