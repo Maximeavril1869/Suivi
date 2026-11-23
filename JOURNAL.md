@@ -3,6 +3,11 @@
 Journal des opérations réalisées sur le projet, à relire pour savoir où il en est.
 Les entrées les plus récentes sont en haut. À chaque intervention, ajouter une entrée datée.
 
+## 2026-11-23 (suite) — Tableau d'évolution : gains et retenues repliés (version 67)
+
+- Demande : « Replié gain et retenue dans évolution (tableau) ». Fait : dans le tableau d'évolution du bulletin, les lignes de gains et les lignes de retenues sont repliées de base ; on touche l'en-tête « ▸ Gain » ou « ▸ Retenue » pour les déplier (▾). Les lignes « Total des gains », « Total des retenues » et « Net calculé » (avec leur colonne Total) restent toujours visibles, ainsi que la section « Total / information ». Chaque en-tête garde son état sur l'appareil (clés `pt-gain` et `pt-ret` de `FOLD`, hors données synchronisées).
+- Tests : nouveau `test_tableau_repli` (replié de base, totaux inchangés, dépliage séparé, état mémorisé hors données) ; les tests existants qui lisent les lignes du tableau déplient d'abord les deux sections. test_paie 345, test_debordements 432, test_sync 57, test_comptes_accueil 36, test_replis 34, 0 échec. Service worker `compte-v67`.
+
 ## 2026-11-23 (suite) — Paysage : une seule colonne (version 66)
 
 - Demande : « je ne veux qu'une colonne ». Fait : retrait du rangement sur deux colonnes ; l'app reste pleine largeur en paysage (1 180 px max, encoches respectées), cartes empilées. Test adapté (une seule colonne, cartes alignées). Service worker `compte-v66`.

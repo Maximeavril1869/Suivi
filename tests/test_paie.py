@@ -41,7 +41,7 @@ def ouvre_paie(pg):
     pg.click('[data-a=nav][data-v=rec]')
     pg.click('[data-a=openpaie]')
     # les menus sont repliés de base : on les déplie pour que les tests voient leur contenu (test_replis_defaut vérifie l'état de départ)
-    pg.evaluate("() => { ['paie-evo', 'paie-crb', 'paie-fiches', 'paie-mod'].forEach((k) => { FOLD[k] = true; }); render(); }")
+    pg.evaluate("() => { ['paie-evo', 'paie-crb', 'paie-fiches', 'paie-mod', 'pt-gain', 'pt-ret'].forEach((k) => { FOLD[k] = true; }); render(); }")
 
 
 def etat_paie(pg):
@@ -103,7 +103,7 @@ def test_parcours(browser):
     check('la vue Bulletin de paye s\'ouvre', pg.evaluate("() => view") == 'paie' and 'Bulletin de paye' in pg.inner_text('#app'))
     check('onglet Récurrent resté actif', pg.evaluate("() => document.querySelector('nav button.on').dataset.v") == 'rec')
     check('menus repliés de base : tableau, courbe, fiches et modèle', pg.evaluate("() => ['paie-evo', 'paie-crb', 'paie-fiches', 'paie-mod'].map((k) => document.querySelector('details[data-fold=' + k + ']').open)") == [False, False, False, False])
-    pg.evaluate("() => { ['paie-evo', 'paie-crb', 'paie-fiches', 'paie-mod'].forEach((k) => { FOLD[k] = true; }); render(); }")
+    pg.evaluate("() => { ['paie-evo', 'paie-crb', 'paie-fiches', 'paie-mod', 'pt-gain', 'pt-ret'].forEach((k) => { FOLD[k] = true; }); render(); }")
     check('sans ligne : pas de carte « À valider », consigne dans le modèle', 'À valider' not in pg.inner_text('#app') and 'Ajoute les lignes de ton bulletin' in norm(pg.inner_text('#app')))
     check('sans fiche : tableau vide', 'Aucune fiche validée' in pg.inner_text('#app'))
 
@@ -426,6 +426,34 @@ def test_selection_suppression(browser):
     check('aucune erreur JavaScript', not pg.errors, pg.errors)
 
 
+def test_tableau_repli(browser):
+    print('Tableau d\'évolution : gains et retenues repliés de base, totaux toujours visibles')
+    pg = device(browser, FauxSupabase())
+    depart(pg)
+    ouvre_paie(pg)
+    ms = [mois(pg, k) for k in range(-2, 1)]
+    pg.evaluate("""(ms) => {
+      const mk = (id, label, kind, amount) => ({ id, label, kind, amount, start: ms[0], end: '', mode: 'fixed' });
+      S.paie.lines = [mk('g', 'Traitement', 'gain', 1000), mk('p', 'Prime', 'gain', 100), mk('r', 'Retraite', 'ret', 100), mk('n', 'Net imprimé', 'tot', 900)];
+      S.paie.slips = {};
+      ms.forEach((m) => { S.paie.slips[m] = { rows: [{ k: 'g', label: 'Traitement', kind: 'gain', amount: 1000 }, { k: 'p', label: 'Prime', kind: 'gain', amount: 50 }, { k: 'r', label: 'Retraite', kind: 'ret', amount: 120 }, { k: 'n', label: 'Net imprimé', kind: 'tot', amount: 800 }] }; });
+      FOLD['paie-evo'] = true; delete FOLD['pt-gain']; delete FOLD['pt-ret']; paWin = 0; render();
+    }""", ms)
+    libs = lambda: pg.evaluate("() => [...document.querySelectorAll('table.pa td.l')].map((e) => e.textContent)")
+    cell_tot = lambda lib: pg.evaluate("(l) => { const tr = [...document.querySelectorAll('table.pa tbody tr')].find((x) => x.querySelector('td.l') && x.querySelector('td.l').textContent === l); return tr ? [...tr.querySelectorAll('td.n, td.tc')].map((e) => e.textContent) : null; }", lib)
+    check('de base : lignes de gains et de retenues masquées, totaux et ligne « total / information » visibles', libs() == ['Total des gains', 'Total des retenues', 'Net calculé', 'Net imprimé'], libs())
+    check('de base : « Traitement » et « Retraite » absents', 'Traitement' not in pg.inner_text('table.pa') and 'Retraite' not in pg.inner_text('table.pa'))
+    check('totaux inchangés une fois repliés (gains 3 × 1 050 = 3 150,00 ; retenues 3 × 120 = 360,00)', cell_tot('Total des gains')[-1].replace('\u202f', ' ') == '3 150,00' and cell_tot('Total des retenues')[-1] == '360,00', (cell_tot('Total des gains'), cell_tot('Total des retenues')))
+    pg.click('tr.pa-fh[data-k=gain]')
+    check('gains dépliés : lignes visibles, retenues toujours repliées', 'Traitement' in pg.inner_text('table.pa') and 'Prime' in pg.inner_text('table.pa') and 'Retraite' not in pg.inner_text('table.pa'))
+    pg.click('tr.pa-fh[data-k=ret]')
+    check('retenues dépliées aussi', 'Retraite' in pg.inner_text('table.pa'))
+    check('état mémorisé sur l\'appareil (hors données synchronisées)', pg.evaluate("() => JSON.parse(localStorage.getItem('compte-replis'))") .get('pt-gain') is True and 'pt-gain' not in json.dumps(etat_paie(pg)))
+    pg.click('tr.pa-fh[data-k=gain]')
+    check('gains repliés de nouveau', 'Traitement' not in pg.inner_text('table.pa') and 'Retraite' in pg.inner_text('table.pa'))
+    check('aucune erreur JavaScript', not pg.errors, pg.errors)
+
+
 def test_ligne_dans_fiches_existantes(browser):
     print('Nouvelle ligne du modèle : proposée aux fiches déjà validées')
     pg = device(browser, FauxSupabase())
@@ -551,7 +579,7 @@ def test_ordre_modele(browser):
     depart(pg, {'lines': [L('a', 'Alpha', 'gain'), L('r', 'Retenue1', 'ret'), L('b', 'Bravo', 'gain'), L('c', 'Charlie', 'gain')], 'slips': {m: {'rows': [
         {'k': i, 'label': n, 'kind': k, 'amount': 10} for i, n, k in [('a', 'Alpha', 'gain'), ('r', 'Retenue1', 'ret'), ('b', 'Bravo', 'gain'), ('c', 'Charlie', 'gain')]]}}, 'skips': []})
     ouvre_paie(pg)
-    pg.evaluate("() => { FOLD['paie-mod'] = true; FOLD['paie-evo'] = true; render(); }")
+    pg.evaluate("() => { FOLD['paie-mod'] = true; FOLD['paie-evo'] = true; FOLD['pt-gain'] = true; FOLD['pt-ret'] = true; render(); }")
     ordre = lambda: pg.evaluate("() => [...document.querySelectorAll('[data-a=paiedit] .l')].map((e) => e.textContent)")
     check('affichage : gains puis retenues, ordre du modèle', ordre() == ['Alpha', 'Bravo', 'Charlie', 'Retenue1'], ordre())
     check('première ligne de chaque type : « monter » inactif, dernière : « descendre » inactif', pg.evaluate("() => [...document.querySelectorAll('[data-a=pamove]')].filter((b) => b.disabled).map((b) => b.closest('.row').querySelector('.l').textContent + b.dataset.d)") == ['Alpha-1', 'Charlie1', 'Retenue1-1', 'Retenue11'])
@@ -563,7 +591,7 @@ def test_ordre_modele(browser):
     check('Alpha descendu jusqu\'en bas des gains', ordre() == ['Charlie', 'Bravo', 'Alpha', 'Retenue1'], ordre())
     pg.reload()
     ouvre_paie(pg)
-    pg.evaluate("() => { FOLD['paie-mod'] = true; FOLD['paie-evo'] = true; render(); }")
+    pg.evaluate("() => { FOLD['paie-mod'] = true; FOLD['paie-evo'] = true; FOLD['pt-gain'] = true; FOLD['pt-ret'] = true; render(); }")
     check('ordre conservé au rechargement', ordre() == ['Charlie', 'Bravo', 'Alpha', 'Retenue1'], ordre())
     tab = pg.evaluate("() => [...document.querySelectorAll('table.pa td.l')].map((e) => e.textContent)")
     check('tableau d\'évolution dans le même ordre (avec les lignes de total)', tab == ['Charlie', 'Bravo', 'Alpha', 'Total des gains', 'Retenue1', 'Total des retenues', 'Net calculé'], tab)
@@ -997,7 +1025,7 @@ def test_tableau_totaux(browser):
       S.paie.lines = [mk('g', 'Traitement', 'gain', 1000), mk('p', 'Prime', 'gain', 100), mk('r', 'Retraite', 'ret', 100), mk('n', 'Net imprimé', 'tot', 900)];
       S.paie.slips = {};
       ms.forEach((m, i) => { S.paie.slips[m] = { rows: [{ k: 'g', label: 'Traitement', kind: 'gain', amount: 1000 + 100 * i }, { k: 'p', label: 'Prime', kind: 'gain', amount: 50 }, { k: 'r', label: 'Retraite', kind: 'ret', amount: 100 + 10 * i }, { k: 'n', label: 'Net imprimé', kind: 'tot', amount: 800 }] }; });
-      FOLD['paie-evo'] = true; paWin = 0; render();
+      FOLD['paie-evo'] = true; FOLD['pt-gain'] = true; FOLD['pt-ret'] = true; paWin = 0; render();
     }""", ms)
     cell = lambda lib: pg.evaluate("(l) => { const tr = [...document.querySelectorAll('table.pa tbody tr')].find((x) => x.querySelector('td.l') && x.querySelector('td.l').textContent === l); return tr ? [...tr.querySelectorAll('td.n, td.tc')].map((e) => e.textContent.replace(/\\s/g, ' ').trim()) : null; }", lib)
     check('en-tête : trois mois puis colonne « Total »', pg.evaluate("() => [...document.querySelectorAll('table.pa thead th')].map((e) => e.textContent.trim()).length") == 5 and pg.evaluate("() => document.querySelector('table.pa thead th.tc').textContent") == 'Total')
@@ -1296,6 +1324,7 @@ def main():
         test_bulletin_reel(browser)
         test_proratisation(browser)
         test_tableau_totaux(browser)
+        test_tableau_repli(browser)
         test_ligne_dans_fiches_existantes(browser)
         test_net_calcule(browser)
         test_totaux_fiche(browser)

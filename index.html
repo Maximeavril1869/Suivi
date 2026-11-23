@@ -114,6 +114,7 @@ table.pa.pt th.l,table.pa.pt td.l{width:25%}
 table.pa th.tc,table.pa td.tc{text-align:right;white-space:nowrap;padding-left:2px;padding-right:2px;font-weight:700;border-left:1px solid var(--line)}
 table.pa tr.pa-st td{font-weight:700;border-top:1px solid var(--line)}
 table.pa tr.pa-st td.l{white-space:normal;line-height:1.2;overflow:visible}
+table.pa tr.pa-fh{cursor:pointer}
 table.pa td.grp{color:var(--mut);font-size:11px;font-weight:700;text-transform:uppercase;padding-top:10px;border-bottom:0}
 </style>
 </head>
@@ -133,7 +134,7 @@ const KEY='compte-salaire-v1';
 /* Épargne bloquée et Bien : comptent dans le patrimoine net seulement. Jamais dans le reste à vivre, le budget du jour, les soldes des comptes cochés ni « Sortir du découvert », et on n'y saisit pas de lignes : on met à jour leur valeur (solde de référence). */
 const ILLIQ={bloque:1,bien:1};
 const isLiquid=a=>!ILLIQ[a.type];
-const APP_VERSION='66';   // identique au numéro de la constante V de sw.js (compte-v62) : à incrémenter ensemble à chaque livraison
+const APP_VERSION='67';   // identique au numéro de la constante V de sw.js (compte-v62) : à incrémenter ensemble à chaque livraison
 const CATS={
  'Revenus':['Salaire','Primes','Remboursements','Intérêts','Autres revenus'],
  'Logement':['Loyer / crédit','Charges','Énergie','Internet / téléphone','Assurance habitation','Travaux / mobilier'],
@@ -1069,7 +1070,8 @@ function paTableHTML(){
  const closing=k=>k==='gain'?totRow('Total des gains',t=>t.brut):k==='ret'?totRow('Total des retenues',t=>t.ret)+totRow('Net calculé',t=>t.net):'';
  let last='';
  ser.forEach(s=>{
-  if(s.kind!==last){h+=closing(last);last=s.kind;h+=`<tr><td colspan="${cols.length+2}" class="grp">${esc(PA_KINDS[s.kind])}</td></tr>`;}
+  if(s.kind!==last){h+=closing(last);last=s.kind;const fd=s.kind==='gain'||s.kind==='ret';h+=fd?`<tr class="pa-fh" data-a="patfold" data-k="${s.kind}" role="button" aria-expanded="${foldOpen('pt-'+s.kind,false)}"><td colspan="${cols.length+2}" class="grp">${foldOpen('pt-'+s.kind,false)?'▾':'▸'} ${esc(PA_KINDS[s.kind])}</td></tr>`:`<tr><td colspan="${cols.length+2}" class="grp">${esc(PA_KINDS[s.kind])}</td></tr>`;}
+  if((s.kind==='gain'||s.kind==='ret')&&!foldOpen('pt-'+s.kind,false))return;
   h+=`<tr><td class="l">${esc(s.label)}</td>${cols.map(m=>{
    const v=s.vals[m];if(v===undefined)return '<td class="n mut">—</td>';
    const i=ms.indexOf(m),pv=i>0?s.vals[ms[i-1]]:undefined;
@@ -1788,6 +1790,7 @@ function act(a,ds,el){
  else if(a==='pakres'){const ms=paSelK?[...paSelK]:[];if(ms.length){S.paie.skips=S.paie.skips.filter(m=>!paSelK.has(m));paSelK=null;save();render();}}
  else if(a==='paiunskipall'){S.paie.skips=[];save();render();}
  else if(a==='paperall'){paFrom='';paTo='';paWin=0;paPt=-1;render();}
+ else if(a==='patfold'){const k='pt-'+ds.k;FOLD[k]=!foldOpen(k,false);try{localStorage.setItem(FOLD_KEY,JSON.stringify(FOLD));}catch(x){}render();}
  else if(a==='pawin'){paWin=Math.max(0,paWin+Number(ds.d));render();}
  else if(a==='paipt'){paPt=Number(ds.i);render();}
  else if(a==='paiaddline')openPaLine(null);

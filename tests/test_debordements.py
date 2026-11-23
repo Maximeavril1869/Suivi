@@ -159,7 +159,7 @@ def vues(pg, largeur):
     # vue Bulletin de paye (tableau, courbe, fiches, modèle dépliés), à valider (novembre non validé)
     nav(pg, 'rec')
     audit(pg, 'vue Récurrent avec la carte Bulletin de paye', largeur)
-    pg.evaluate("() => { view = 'paie'; Object.assign(FOLD, {'paie-evo': true, 'paie-crb': true, 'paie-fiches': true, 'paie-mod': true, 'paie-hist': true}); render(); document.querySelectorAll('details').forEach((d) => { d.open = true; }); }")
+    pg.evaluate("() => { view = 'paie'; Object.assign(FOLD, {'pt-gain': true, 'pt-ret': true, 'paie-evo': true, 'paie-crb': true, 'paie-fiches': true, 'paie-mod': true, 'paie-hist': true}); render(); document.querySelectorAll('details').forEach((d) => { d.open = true; }); }")
     audit(pg, 'vue Bulletin de paye (tout déplié)', largeur)
     pg.evaluate("() => { paWin = 1; render(); document.querySelectorAll('details').forEach((d) => { d.open = true; }); }")
     audit(pg, 'vue Bulletin de paye (fenêtre décalée)', largeur)
