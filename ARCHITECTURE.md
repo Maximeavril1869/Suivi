@@ -236,3 +236,7 @@ Barre fine fixée juste au-dessus des onglets (`#offbar`), visible sur les cinq 
 Clés de stockage propres à l'appareil, jamais exportées : `compte-sync-session` (jetons), `compte-sync-meta` (curseur et empreintes), `compte-sync-cle`, `compte-sync-conflits`.
 Le service worker ignore désormais les requêtes vers d'autres adresses (aucun appel au compte dans le cache).
 
+## Affichage en paysage
+
+- Règle CSS unique, au début de la feuille de style : `@media (orientation:landscape) and (min-width:700px)`. Elle élargit `#app` (1 180 px maximum), ajoute les marges d'encoche (`env(safe-area-inset-left/right)`) à `#app` et à la barre d'onglets, range les cartes sur deux colonnes (`column-count:2`, `break-inside:avoid` sur les enfants directs de `#app`) et laisse sur toute la largeur les titres, `.mnav`, `.pseg` et les paragraphes d'aide (`column-span:all`). Le portrait n'est pas touché.
+- Tout nouvel élément placé directement dans `#app` doit tenir dans une colonne ou recevoir `column-span:all`. `test_debordements.py` vérifie les trois tailles de `PAYSAGES` (844 × 390, 1 024 × 768, 1 194 × 834).

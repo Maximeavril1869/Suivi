@@ -3,6 +3,14 @@
 Journal des opérations réalisées sur le projet, à relire pour savoir où il en est.
 Les entrées les plus récentes sont en haut. À chaque intervention, ajouter une entrée datée.
 
+## 2026-11-23 — Affichage en paysage (version 65)
+
+- Demande : « en paysage, que ça s'adapte à la taille de l'écran ». Constat : `#app` était plafonné à 640 px, donc une colonne étroite centrée dans un écran large.
+- Fait : règle CSS `@media (orientation:landscape) and (min-width:700px)` : l'app passe à 1 180 px maximum, marges latérales augmentées des encoches (`safe-area-inset-left/right`, aussi pour la barre d'onglets), cartes sur **deux colonnes** (`column-count:2`, une carte n'est jamais coupée), titres, flèches de mois, sélecteur Jour / Semaine / Mois / Année et textes d'aide sur toute la largeur, cartes de chiffres de l'Accueil en grille souple, fenêtres de saisie élargies à 760 px. Portrait inchangé (< 700 px de large ou écran vertical).
+- Vérifié sur captures : iPhone couché (844 × 390), iPad (1 024 × 768), iPad Pro 11 (1 194 × 834) — Accueil, Lignes, Récurrent, Réglages, Bulletin de paye.
+- Tests : `test_debordements` passe à 432 vérifications (ajout des trois tailles paysage : aucun débordement horizontal, largeur > 700 px, deux colonnes, cartes de Réglages réparties sur deux colonnes) ; `test_paie` 337, `test_replis` 34, `test_comptes_accueil` 36, `test_sync` 57 sans échec. Service worker `compte-v65`.
+- Pas vérifié : rendu sur l'appareil réel (iPhone / iPad), la hauteur d'un iPhone couché (390 px) laisse peu de place au-dessus de la barre d'onglets.
+
 ## 2026-11-22 — Tous les menus repliables sont repliés de base (version 64)
 
 - Demande : « tous les menus repliables doivent être repliés de base ».

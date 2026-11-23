@@ -17,6 +17,15 @@
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.4 -apple-system,system-ui,sans-serif}
 #app{max-width:640px;margin:0 auto;padding:calc(env(safe-area-inset-top) + 32px) 14px calc(90px + env(safe-area-inset-bottom))}
+/* Paysage (iPhone couché, iPad) : l'app occupe toute la largeur (encoches comprises) et les cartes se rangent sur deux colonnes ; en portrait rien ne change. */
+@media (orientation:landscape) and (min-width:700px){
+#app{max-width:1180px;padding:calc(env(safe-area-inset-top) + 16px) calc(env(safe-area-inset-right) + 20px) calc(90px + env(safe-area-inset-bottom)) calc(env(safe-area-inset-left) + 20px);column-count:2;column-gap:16px}
+#app>*{break-inside:avoid}
+#app>h2,#app>.mnav,#app>.pseg,#app>p{column-span:all}
+.grid{grid-template-columns:repeat(auto-fit,minmax(160px,1fr))}
+nav{padding-left:env(safe-area-inset-left);padding-right:env(safe-area-inset-right)}
+.sheet{max-width:760px}
+}
 h2{margin:6px 0 10px;font-size:22px}
 h3{margin:0 0 10px}
 .mut{color:var(--mut)}
@@ -127,7 +136,7 @@ const KEY='compte-salaire-v1';
 /* Épargne bloquée et Bien : comptent dans le patrimoine net seulement. Jamais dans le reste à vivre, le budget du jour, les soldes des comptes cochés ni « Sortir du découvert », et on n'y saisit pas de lignes : on met à jour leur valeur (solde de référence). */
 const ILLIQ={bloque:1,bien:1};
 const isLiquid=a=>!ILLIQ[a.type];
-const APP_VERSION='64';   // identique au numéro de la constante V de sw.js (compte-v62) : à incrémenter ensemble à chaque livraison
+const APP_VERSION='65';   // identique au numéro de la constante V de sw.js (compte-v62) : à incrémenter ensemble à chaque livraison
 const CATS={
  'Revenus':['Salaire','Primes','Remboursements','Intérêts','Autres revenus'],
  'Logement':['Loyer / crédit','Charges','Énergie','Internet / téléphone','Assurance habitation','Travaux / mobilier'],

@@ -20,6 +20,7 @@ import test_sync as T  # noqa: E402
 from test_sync import FauxSupabase, check  # noqa: E402
 
 LARGEURS = [390, 375, 360, 320]
+PAYSAGES = [(844, 390), (1024, 768), (1194, 834)]   # iPhone 16e, iPad, iPad Pro 11 couchés
 
 # Repère les éléments qui dépassent : par rapport à l'écran, puis par rapport à la fenêtre (.sheet) ou à la carte qui les contient.
 JS_AUDIT = r"""
@@ -226,9 +227,21 @@ def fenetres(pg, largeur):
     pg.evaluate("() => { sel = null; }")
 
 
-def test_largeur(browser, largeur, x=1):
-    print('Largeur %d px%s' % (largeur, '' if x == 1 else ' (montants ×%d)' % x))
-    ctx = browser.new_context(viewport={'width': largeur, 'height': 844}, device_scale_factor=2, is_mobile=True, has_touch=True)
+def paysage(pg, largeur):
+    # en paysage : l'app remplit l'écran (plus de colonne étroite de 640 px) et range les cartes sur deux colonnes
+    nav(pg, 'set')
+    pg.evaluate("() => { Object.keys(FOLD).concat(['comptes', 'budgets', 'paie', 'regles', 'sync', 'sauvegarde', 'danger']).forEach((k) => { FOLD[k] = true; }); render(); }")
+    larg = pg.evaluate("() => document.getElementById('app').getBoundingClientRect().width")
+    cols = pg.evaluate("() => getComputedStyle(document.getElementById('app')).columnCount")
+    check('%d px paysage — l\'app dépasse 640 px de large (%d px)' % (largeur, larg), larg > 700, larg)
+    check('%d px paysage — cartes sur deux colonnes' % largeur, cols == '2', cols)
+    x = pg.evaluate("() => [...document.querySelectorAll('#app > details.card')].map((e) => Math.round(e.getBoundingClientRect().left))")
+    check('%d px paysage — les cartes de Réglages occupent bien deux colonnes' % largeur, len(set(x)) == 2, x)
+
+
+def test_largeur(browser, largeur, x=1, hauteur=844):
+    print('Largeur %d px%s%s' % (largeur, '' if x == 1 else ' (montants ×%d)' % x, '' if hauteur == 844 else ' × %d px (paysage)' % hauteur))
+    ctx = browser.new_context(viewport={'width': largeur, 'height': hauteur}, device_scale_factor=2, is_mobile=True, has_touch=True)
     fake = FauxSupabase()
     ctx.route(T.HOST + '/**', fake.handle)
     pg = ctx.new_page()
@@ -238,6 +251,8 @@ def test_largeur(browser, largeur, x=1):
     if T.PUMP[0] is None:
         T.PUMP[0] = pg
     etat(pg, x)
+    if hauteur < largeur:
+        paysage(pg, largeur)
     vues(pg, largeur)
     bannieres(pg, largeur)
     fenetres(pg, largeur)
@@ -252,6 +267,8 @@ def main():
             test_largeur(browser, w)
         for w in (390, 320):
             test_largeur(browser, w, 50)   # montants à six chiffres : les chiffres doivent passer à la ligne, pas sortir de l'écran
+        for w, h in PAYSAGES:
+            test_largeur(browser, w, 1, h)
         browser.close()
     failed = [n for n, ok in T.RESULTS if not ok]
     print('\n%d vérifications, %d échec(s)' % (len(T.RESULTS), len(failed)))
